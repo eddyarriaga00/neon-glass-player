@@ -256,11 +256,11 @@ function addRecent(q) {
   q = q.trim(); if (!q) return;
   store.set('recent', [q, ...store.get('recent', []).filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, 6));
 }
-function renderRecents() {
+function renderRecents(leaving) {
   const box = $('recents'), list = store.get('recent', []);
-  const show = document.activeElement === $('q') && !$('q').value.trim() && list.length > 0;
+  const show = !leaving && document.activeElement === $('q') && !$('q').value.trim() && list.length > 0;
   box.hidden = !show; if (!show) return;
-  const chips = list.map((s) => { const c = el('button', 'chip', s); c.type = 'button'; c.onclick = () => { $('q').value = s; $('qClear').hidden = false; $('q').blur(); search(s); }; return c; });
+  const chips = list.map((s) => { const c = el('button', 'chip', s); c.type = 'button'; c.onclick = () => { $('q').value = s; $('qClear').hidden = false; $('q').blur(); box.hidden = true; search(s); }; return c; });
   const x = el('button', 'chip clear', 'Clear'); x.type = 'button'; x.onclick = () => { store.del('recent'); renderRecents(); };
   box.replaceChildren(...chips, x);
 }
@@ -881,7 +881,7 @@ $('spLogout').onclick = () => { sp.logout(); toast('Spotify disconnected.'); };
 /* ---------- wiring ---------- */
 $('searchForm').addEventListener('submit', (e) => { e.preventDefault(); clearTimeout(typeTimer); addRecent($('q').value); search($('q').value); $('q').blur(); });
 $('qClear').onclick = () => { clearTimeout(typeTimer); $('q').value = ''; $('qClear').hidden = true; if (state.query) search(''); $('q').focus(); renderRecents(); };
-['focus', 'blur', 'input'].forEach((ev) => $('q').addEventListener(ev, () => { $('qClear').hidden = !$('q').value; renderRecents(); }));
+['focus', 'blur', 'input'].forEach((ev) => $('q').addEventListener(ev, () => { $('qClear').hidden = !$('q').value; renderRecents(ev === 'blur'); }));
 $('recents').addEventListener('pointerdown', (e) => e.preventDefault()); // keep the keyboard up while picking one
 $('sideTabs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setTab(b.dataset.tab); });
 let typeTimer;
@@ -919,7 +919,7 @@ $('sub').onclick = () => {
   if (!state.track) return;
   const a = state.track.artist.split(/,| & /)[0].trim();
   if (state.src !== 'all') $('chips').querySelector('[data-src="all"]').click();
-  $('q').value = a; $('qClear').hidden = false; search(a); setView('library');
+  $('q').value = a; $('qClear').hidden = false; $('recents').hidden = true; search(a); setView('library');
 };
 $('play').onclick = togglePlay;
 $('prev').onclick = () => step(-1);
