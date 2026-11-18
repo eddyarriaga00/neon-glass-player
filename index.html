@@ -1,9 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="neon">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0714">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Neon Glass Player</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,55 +19,78 @@
   <span class="brand">MUSIC UI</span>
   <div class="top-right">
     <button id="settingsBtn" class="link-btn" type="button">Connect Spotify</button>
-    <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    <button id="themeBtn" class="dots" type="button" aria-label="Change color theme"><i></i><i></i><i></i></button>
   </div>
 </header>
 
-<main class="app" data-view="player">
+<main class="app" data-view="library">
   <section class="panel library" id="library" aria-label="Library">
     <form id="searchForm" class="search" role="search">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="q" type="search" placeholder="Search all services" autocomplete="off" enterkeyhint="search" aria-label="Search songs">
+      <input id="q" type="search" placeholder="Search songs, artists" autocomplete="off" enterkeyhint="search" aria-label="Search songs">
     </form>
-    <div class="chips" id="chips" role="tablist" aria-label="Service">
+    <div class="chips" id="chips" aria-label="Source">
       <button class="chip on" data-src="all" type="button">All</button>
       <button class="chip" data-src="apple" type="button">Apple Music</button>
       <button class="chip" data-src="spotify" type="button">Spotify</button>
+      <button class="chip" data-src="liked" type="button">♥ Liked</button>
     </div>
+    <div class="list-title" id="listTitle">TRENDING NOW</div>
     <ul class="tracks" id="tracks" aria-live="polite"></ul>
-    <label class="sticky">
-      <span>STICKY NOTE</span>
+    <label class="sticky" id="sticky">
+      <span id="stickyGrip">STICKY NOTE</span>
       <textarea id="note" rows="2" placeholder="Your note text goes here" maxlength="200"></textarea>
     </label>
   </section>
 
   <section class="panel player" id="player" aria-label="Now playing">
-    <div class="art" id="art"><img id="artImg" alt="" hidden><span class="art-label">[ ALBUM ART ]</span></div>
-    <h1 id="title">Pick a track</h1>
-    <p class="sub" id="sub">Search for a song to start</p>
+    <canvas id="viz" aria-hidden="true"></canvas>
+    <div class="sheet-head" id="playerHead">
+      <button id="closePlayer" type="button" aria-label="Close player"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+      <span class="grab">NOW PLAYING</span>
+      <button id="openLyrics" type="button" class="pill">Lyrics</button>
+    </div>
+    <div class="art-wrap" id="artWrap">
+      <div class="vinyl" aria-hidden="true"></div>
+      <div class="art" id="art"><img id="artImg" alt="" hidden draggable="false"><span class="art-label">[ ALBUM ART ]</span><i class="shine"></i></div>
+    </div>
+    <div class="meta">
+      <div class="meta-text"><h1 id="title">Pick a track</h1><p class="sub" id="sub">Search for a song to start</p></div>
+      <button id="like" type="button" aria-label="Like" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.600-7 10-7 10z"/></svg></button>
+    </div>
     <div class="progress">
       <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek">
       <div class="times"><span id="cur">0:00</span><span id="mode" class="mode"></span><span id="dur">0:00</span></div>
     </div>
     <div class="controls">
-      <button id="prev" type="button" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M7 6v12M19 6 9 12l10 6z"/></svg></button>
-      <button id="play" class="play" type="button" aria-label="Play"><svg viewBox="0 0 24 24"><path id="playIcon" d="M8 5v14l11-7z"/></svg></button>
-      <button id="next" type="button" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M17 6v12M5 6l10 6-10 6z"/></svg></button>
+      <button id="shuffle" class="sm" type="button" aria-label="Shuffle" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 7h3l9 10h5M3 17h3l3-3.3M13 8.3 15 7h5M17 4l3 3-3 3M17 14l3 3-3 3"/></svg></button>
+      <button id="prev" type="button" aria-label="Previous"><svg viewBox="0 0 24 24" class="solid"><path d="M7 6v12M19 6 9 12l10 6z"/></svg></button>
+      <button id="play" class="play" type="button" aria-label="Play"><svg viewBox="0 0 24 24" class="solid"><path id="playIcon" d="M8 5v14l11-7z"/></svg></button>
+      <button id="next" type="button" aria-label="Next"><svg viewBox="0 0 24 24" class="solid"><path d="M17 6v12M5 6l10 6-10 6z"/></svg></button>
+      <button id="repeat" class="sm" type="button" aria-label="Repeat this song" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 12V9a3 3 0 0 1 3-3h11M15 3l3 3-3 3M20 12v3a3 3 0 0 1-3 3H6M9 21l-3-3 3-3"/></svg></button>
     </div>
+    <label class="vol"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6"/></svg><input id="vol" type="range" min="0" max="100" value="80" aria-label="Volume"></label>
+    <button id="peek" class="peek" type="button">Lyrics</button>
     <div class="open-in" id="openIn"></div>
   </section>
 
   <section class="panel lyrics" id="lyricsPanel" aria-label="Lyrics">
-    <div class="lyrics-head"><span>LYRICS</span><span id="lyHint" class="hint"></span></div>
+    <div class="lyrics-head" id="lyricsHead">
+      <button id="closeLyrics" type="button" aria-label="Close lyrics"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+      <span>LYRICS</span><span id="lyHint" class="hint"></span>
+    </div>
     <div class="lines" id="lines"><p class="empty">Lyrics show up here when a track plays.</p></div>
   </section>
 </main>
 
-<nav class="tabs" aria-label="Sections">
-  <button data-view="library" type="button">Library</button>
-  <button data-view="player" type="button" class="on">Player</button>
-  <button data-view="lyrics" type="button">Lyrics</button>
-</nav>
+<div class="mini" id="mini" hidden>
+  <i class="mini-prog" id="miniProg"></i>
+  <button class="mini-open" id="miniOpen" type="button" aria-label="Open player">
+    <img id="miniArt" alt=""><span><b id="miniTitle"></b><small id="miniSub"></small></span>
+  </button>
+  <button id="miniPlay" type="button" aria-label="Play"><svg viewBox="0 0 24 24" class="solid"><path id="miniIcon" d="M8 5v14l11-7z"/></svg></button>
+  <button id="miniNext" type="button" aria-label="Next"><svg viewBox="0 0 24 24" class="solid"><path d="M17 6v12M5 6l10 6-10 6z"/></svg></button>
+</div>
 
 <dialog id="settings">
   <form method="dialog" class="dlg">
@@ -87,7 +112,7 @@
 </dialog>
 
 <div id="toast" role="status" aria-live="polite"></div>
-<audio id="audio" preload="none"></audio>
+<audio id="audio" preload="none" playsinline></audio>
 <script src="app.js"></script>
 </body>
 </html>
