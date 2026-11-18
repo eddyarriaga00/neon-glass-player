@@ -12,7 +12,8 @@ const isPhone = () => matchMedia('(max-width: 880px)').matches;
 const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
 
 const state = {
-  results: { apple: [], spotify: [] },
+  results: { apple: [], spotify: [], audius: [] },
+  genre: store.get('genre', 0),
   query: '',
   list: [],          // what the track list currently shows
   queue: [],         // list the current track was started from
@@ -39,7 +40,25 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
 }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-function setView(v) { app.dataset.view = v; }
+// Views stack library < player < lyrics. On phones each step down is a history entry so the back button/gesture closes sheets.
+const DEPTH = { library: 0, player: 1, lyrics: 2 };
+let skipPop = 0;
+function setView(v, fromPop) {
+  const cur = app.dataset.view; if (v === cur) return;
+  app.dataset.view = v;
+  if (fromPop || !isPhone()) return;
+  const d = DEPTH[v] - DEPTH[cur];
+  if (d > 0) for (let i = 0; i < d; i++) history.pushState({ ngp: 1 }, '');
+  else { skipPop++; history.go(d); }
+}
+window.addEventListener('popstate', () => {
+  if (skipPop) { skipPop--; return; }
+  const cur = app.dataset.view;
+  if (cur !== 'library') setView(cur === 'lyrics' ? 'player' : 'library', true);
+});
+const fullLen = () => state.backend === 'spotify' || !!(state.track && state.track.full);
+const SRC_LABEL = { apple: 'Apple Music', spotify: 'Spotify', audius: 'Audius · full song' };
+const GENRES = [['Top', 0], ['Hip-Hop', 18], ['R&B', 15], ['Pop', 14], ['Latin', 12], ['Rock', 21], ['Alt', 20], ['Electronic', 7], ['Country', 6]];
 
 /* ---------- search + trending ---------- */
 async function searchApple(q) {
@@ -52,8 +71,8 @@ async function searchApple(q) {
     dur: (x.trackTimeMillis || 0) / 1000, previewUrl: x.previewUrl, link: x.trackViewUrl,
   }));
 }
-async function trending() {
-  const r = await fetch('https://itunes.apple.com/us/rss/topsongs/limit=30/json');
+async function trending(genre) {
+  const r = await fetch('https://itunes.apple.com/us/rss/topsongs/limit=30/' + (genre ? 'genre=' + genre + '/' : '') + 'json');
   if (!r.ok) throw new Error('Trending failed');
   const j = await r.json();
   return [].concat(j.feed.entry || []).map((e) => {
@@ -66,6 +85,20 @@ async function trending() {
       dur: 0, previewUrl: pv && pv.attributes.href, link: e.id.label,
     };
   }).filter((t) => t.previewUrl);
+}
+// Audius: free, keyless, full-length streams from independent artists.
+const AUD = 'https://api.audius.co/v1', APPN = 'app_name=neon-glass-player';
+async function searchAudius(q) {
+  const r = await fetch(AUD + '/tracks/' + (q ? 'search?query=' + encodeURIComponent(q) + '&' : 'trending?') + 'limit=25&' + APPN);
+  if (!r.ok) throw new Error('Audius failed');
+  return ((await r.json()).data || []).filter((x) => x.is_streamable && !x.is_stream_gated).map((x) => {
+    const a = x.artwork || {};
+    return {
+      id: 'u' + x.id, src: 'audius', full: true, title: x.title, artist: x.user.name, album: '',
+      art: a['150x150'], artBig: a['480x480'], dur: x.duration,
+      previewUrl: AUD + '/tracks/' + x.id + '/stream?' + APPN, link: 'https://audius.co' + (x.permalink || ''),
+    };
+  });
 }
 async function searchSpotify(q) {
   const j = await sp.api('/search?type=track&limit=10&q=' + encodeURIComponent(q));
@@ -82,16 +115,19 @@ async function search(q) {
   q = q.trim(); state.query = q;
   const seq = ++state.searchSeq;
   if (state.src !== 'liked') $('tracks').replaceChildren(el('li', 'msg', q ? 'Searching…' : 'Loading trending songs…'));
-  const [a, s] = await Promise.allSettled([q ? searchApple(q) : trending(), q && sp.connected() ? searchSpotify(q) : Promise.resolve([])]);
+  const [a, s, u] = await Promise.allSettled([q ? searchApple(q) : trending(state.genre), q && sp.connected() ? searchSpotify(q) : Promise.resolve([]), searchAudius(q)]);
   if (seq !== state.searchSeq) return;
   state.results.apple = a.status === 'fulfilled' ? a.value : [];
   state.results.spotify = s.status === 'fulfilled' ? s.value : [];
+  state.results.audius = u.status === 'fulfilled' ? u.value : [];
+  state.failedU = u.status === 'rejected';
   state.failed = a.status === 'rejected' && !state.results.spotify.length;
   renderList();
 }
 function currentList() {
-  const { apple, spotify } = state.results;
+  const { apple, spotify, audius } = state.results;
   if (state.src === 'liked') return state.likes;
+  if (state.src === 'audius') return audius;
   if (state.src === 'apple') return apple;
   if (state.src === 'spotify') return spotify;
   const out = [];
@@ -101,7 +137,10 @@ function currentList() {
 function renderList() {
   const ul = $('tracks');
   state.list = currentList();
-  $('listTitle').textContent = state.src === 'liked' ? 'LIKED SONGS' : state.query ? 'RESULTS' : 'TRENDING NOW';
+  const g = GENRES.find((x) => x[1] === state.genre);
+  $('listTitle').textContent = state.src === 'liked' ? 'LIKED SONGS' : state.src === 'audius' ? (state.query ? 'FULL SONGS ON AUDIUS' : 'TRENDING ON AUDIUS · FULL SONGS') :
+    state.query ? 'RESULTS' : 'TRENDING' + (g && g[1] ? ' · ' + g[0].toUpperCase() : ' NOW');
+  $('genres').hidden = !!state.query || !(state.src === 'all' || state.src === 'apple');
   if (state.src === 'spotify' && !sp.connected()) {
     const li = el('li', 'msg', 'Spotify is not connected yet. ');
     const b = el('button', 'link-btn', 'Connect Spotify'); b.type = 'button'; b.onclick = openSettings; li.append(b);
@@ -110,7 +149,7 @@ function renderList() {
   if (!state.list.length) {
     ul.replaceChildren(el('li', 'msg',
       state.src === 'liked' ? 'Nothing liked yet. Tap the heart on a song to save it here.' :
-      state.failed ? 'Could not load songs. Check your connection and try again.' :
+      (state.src === 'audius' ? state.failedU : state.failed) ? 'Could not load songs. Check your connection and try again.' :
       state.src === 'spotify' && !state.query ? 'Search for something to see Spotify results.' : 'No songs found. Try a different search.'));
     return;
   }
@@ -120,7 +159,7 @@ function renderList() {
     let img;
     if (t.art) { img = el('img'); img.src = t.art; img.alt = ''; img.loading = 'lazy'; } else img = el('span', 'ph');
     const d = el('div');
-    d.append(el('b', null, t.title), el('small', null, t.artist + ' · ' + (t.src === 'apple' ? 'Apple Music' : 'Spotify')));
+    d.append(el('b', null, t.title), el('small', null, t.artist + ' · ' + SRC_LABEL[t.src]));
     const eq = el('span', 'eq'); eq.append(el('i'), el('i'), el('i'));
     b.append(img, d, eq);
     b.onclick = () => { state.queue = state.list; playIndex(i); setView('player'); };
@@ -141,7 +180,8 @@ async function previewFor(t) {
 async function playIndex(i) {
   const t = state.queue[i]; if (!t) return;
   const seq = ++state.playSeq;
-  state.index = i; state.track = t; state.offset = null; state.lineIdx = -2;
+  state.index = i; state.track = t; state.offset = t.full ? 0 : null; state.lineIdx = -2;
+  store.set('last', { queue: state.queue.slice(0, 60), index: i });
   showTrack(t); loadLyrics(t, seq);
   document.querySelectorAll('.track').forEach((b, n) => b.classList.toggle('on', !!state.list[n] && state.list[n].id === t.id));
 
@@ -152,8 +192,8 @@ async function playIndex(i) {
     if (seq !== state.playSeq) return;
   }
   if (sp.ready) sp.player.pause().catch(() => {});
-  state.backend = 'audio'; state.offset = null;
-  $('mode').textContent = 'Preview';
+  state.backend = 'audio'; state.offset = t.full ? 0 : null;
+  $('mode').textContent = t.full ? 'Full song' : 'Preview';
   const url = await previewFor(t);
   if (seq !== state.playSeq) return;
   if (!url) { toast('No free preview for this track.'); return; }
@@ -176,6 +216,7 @@ function onEnded() {
 function togglePlay() {
   popPlay();
   if (!state.track) { if (state.list.length) { state.queue = state.list; playIndex(0); } return; }
+  if (state.backend === 'audio' && !audio.getAttribute('src')) return void playIndex(state.index); // restored session, nothing loaded yet
   if (state.backend === 'spotify') { sp.player.activateElement && sp.player.activateElement(); sp.player.togglePlay(); }
   else if (audio.paused) audio.play().catch(() => {}); else audio.pause();
 }
@@ -221,6 +262,7 @@ function showTrack(t) {
     ['SoundCloud', 'https://soundcloud.com/search?q=' + q],
     ['Amazon Music', 'https://music.amazon.com/search/' + q],
   ];
+  if (t.src === 'audius') links.unshift(['Audius', t.link]);
   $('openIn').replaceChildren(...links.map(([n, h]) => { const a = el('a', null, n); a.href = h; a.target = '_blank'; a.rel = 'noopener'; return a; }));
   if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({ title: t.title, artist: t.artist, album: t.album, artwork: t.artBig ? [{ src: t.artBig, sizes: '600x600' }] : [] });
@@ -233,6 +275,9 @@ if ('mediaSession' in navigator) {
     ms.setActionHandler('nexttrack', () => step(1));
     ms.setActionHandler('play', () => { if (!isPlaying()) togglePlay(); });
     ms.setActionHandler('pause', () => { if (isPlaying()) togglePlay(); });
+    ms.setActionHandler('seekto', (e) => { seekTo(e.seekTime); state.lineIdx = -2; });
+    const posState = () => { try { if (dur()) ms.setPositionState({ duration: dur(), position: Math.min(pos(), dur()), playbackRate: 1 }); } catch {} };
+    ['loadedmetadata', 'seeked', 'play'].forEach((ev) => audio.addEventListener(ev, posState));
   } catch {}
 }
 // Recolor the background glow from the artwork.
@@ -362,7 +407,7 @@ function renderLyrics() {
 }
 function lineTap(i) {
   const l = state.lyrics.synced[i];
-  if (state.backend === 'spotify') { seekTo(l.t); return; }
+  if (fullLen()) { seekTo(l.t); state.lineIdx = -2; return; }
   // Preview clips start somewhere mid-song: the tapped line tells us where.
   const first = state.offset === null;
   state.offset = l.t - pos();
@@ -371,9 +416,9 @@ function lineTap(i) {
   updateHint(); syncLyrics();
 }
 function updateHint() {
-  const ly = state.lyrics, needSync = ly && ly.synced && state.backend !== 'spotify' && state.offset === null;
+  const ly = state.lyrics, needSync = ly && ly.synced && !fullLen() && state.offset === null;
   $('lyHint').textContent = !ly ? '' : ly.plain ? 'Not time-synced' :
-    state.backend === 'spotify' ? 'Tap a line to jump there' :
+    fullLen() ? 'Tap a line to jump there' :
     needSync ? 'Tap the line you hear to sync' : 'Synced · tap a line to re-sync';
   const peek = $('peek'); peek.classList.remove('live');
   peek.textContent = !ly ? 'Lyrics' : needSync ? 'Lyrics · tap to sync with the preview ›' : 'Show lyrics ›';
@@ -610,12 +655,23 @@ $('spConnect').onclick = () => {
 $('spLogout').onclick = () => { sp.logout(); toast('Spotify disconnected.'); };
 
 /* ---------- wiring ---------- */
-$('searchForm').addEventListener('submit', (e) => { e.preventDefault(); search($('q').value); $('q').blur(); });
-$('q').addEventListener('input', () => { if (!$('q').value && state.query) search(''); });
+$('searchForm').addEventListener('submit', (e) => { e.preventDefault(); clearTimeout(typeTimer); search($('q').value); $('q').blur(); });
+let typeTimer;
+$('q').addEventListener('input', () => {
+  clearTimeout(typeTimer);
+  const v = $('q').value.trim();
+  if (!v) { if (state.query) search(''); return; }
+  if (v.length >= 2) typeTimer = setTimeout(() => search(v), 450);
+});
+$('genres').replaceChildren(...GENRES.map(([name, id]) => {
+  const b = el('button', 'chip' + (id === state.genre ? ' on' : ''), name); b.type = 'button';
+  b.onclick = () => { state.genre = id; store.set('genre', id); [...$('genres').children].forEach((c) => c.classList.toggle('on', c === b)); search(''); };
+  return b;
+}));
 $('chips').addEventListener('click', (e) => {
   const c = e.target.closest('.chip'); if (!c) return;
   state.src = c.dataset.src;
-  document.querySelectorAll('.chip').forEach((x) => x.classList.toggle('on', x === c));
+  $('chips').querySelectorAll('.chip').forEach((x) => x.classList.toggle('on', x === c));
   renderList();
 });
 $('play').onclick = togglePlay;
@@ -665,5 +721,11 @@ $('note').addEventListener('input', () => store.set('note', $('note').value));
   await sp.handleRedirect();
   refreshSpUI();
   sp.initPlayer();
+  const last = store.get('last');
+  if (last && last.queue && last.queue[last.index]) { // bring back the last song, paused
+    state.queue = last.queue; state.index = last.index; state.track = last.queue[last.index];
+    showTrack(state.track); $('mode').textContent = state.track.full ? 'Full song' : 'Preview';
+  }
   search('');
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
