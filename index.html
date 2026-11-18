@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 <div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="grid"></div></div>
@@ -22,7 +22,7 @@
 <header class="top">
   <span class="brand">MUSIC UI</span>
   <div class="top-right">
-    <button id="settingsBtn" class="link-btn" type="button">Connect Spotify</button>
+    <button id="settingsBtn" class="link-btn" type="button">Primary: Apple Music</button>
     <button id="themeBtn" class="dots" type="button" aria-label="Change color theme"><i></i><i></i><i></i></button>
   </div>
 </header>
@@ -37,7 +37,6 @@
       <button class="chip on" data-src="all" type="button">All</button>
       <button class="chip" data-src="apple" type="button">Apple Music</button>
       <button class="chip" data-src="spotify" type="button">Spotify</button>
-      <button class="chip" data-src="audius" type="button">Full songs</button>
       <button class="chip" data-src="liked" type="button">♥ Liked</button>
     </div>
     <div class="chips genres" id="genres" aria-label="Genre charts"></div>
@@ -100,8 +99,15 @@
 
 <dialog id="settings">
   <form method="dialog" class="dlg">
-    <h2>Connect Spotify</h2>
-    <p>Apple Music search and 30-second previews work with no setup. For full-length Spotify playback (Premium accounts), paste the Client ID of your own free Spotify developer app.</p>
+    <h2>Services</h2>
+    <h3>Primary service</h3>
+    <div class="seg" id="primarySeg" role="group" aria-label="Primary service">
+      <button type="button" data-p="apple" aria-pressed="true">Apple Music</button>
+      <button type="button" data-p="spotify" aria-pressed="false">Spotify</button>
+    </div>
+    <p id="primaryNote" class="note"></p>
+    <h3>Connect Spotify</h3>
+    <p>Apple Music needs no setup. For full-length Spotify playback (Premium accounts), paste the Client ID of your own free Spotify developer app.</p>
     <ol>
       <li>Create an app at <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> and tick <b>Web API</b> and <b>Web Playback SDK</b>.</li>
       <li>Add this Redirect URI: <code id="redir"></code></li>
@@ -119,6 +125,6 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="none" playsinline></audio>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>

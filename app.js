@@ -12,7 +12,8 @@ const isPhone = () => matchMedia('(max-width: 880px)').matches;
 const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
 
 const state = {
-  results: { apple: [], spotify: [], audius: [] },
+  results: { apple: [], spotify: [] },
+  primary: store.get('primary', 'apple'), // service that leads the list and handles playback when it can
   genre: store.get('genre', 0),
   query: '',
   list: [],          // what the track list currently shows
@@ -57,7 +58,7 @@ window.addEventListener('popstate', () => {
   if (cur !== 'library') setView(cur === 'lyrics' ? 'player' : 'library', true);
 });
 const fullLen = () => state.backend === 'spotify' || !!(state.track && state.track.full);
-const SRC_LABEL = { apple: 'Apple Music', spotify: 'Spotify', audius: 'Audius · full song' };
+const SRC_LABEL = { apple: 'Apple Music', spotify: 'Spotify' };
 const GENRES = [['Top', 0], ['Hip-Hop', 18], ['R&B', 15], ['Pop', 14], ['Latin', 12], ['Rock', 21], ['Alt', 20], ['Electronic', 7], ['Country', 6]];
 
 /* ---------- search + trending ---------- */
@@ -86,20 +87,6 @@ async function trending(genre) {
     };
   }).filter((t) => t.previewUrl);
 }
-// Audius: free, keyless, full-length streams from independent artists.
-const AUD = 'https://api.audius.co/v1', APPN = 'app_name=neon-glass-player';
-async function searchAudius(q) {
-  const r = await fetch(AUD + '/tracks/' + (q ? 'search?query=' + encodeURIComponent(q) + '&' : 'trending?') + 'limit=25&' + APPN);
-  if (!r.ok) throw new Error('Audius failed');
-  return ((await r.json()).data || []).filter((x) => x.is_streamable && !x.is_stream_gated).map((x) => {
-    const a = x.artwork || {};
-    return {
-      id: 'u' + x.id, src: 'audius', full: true, title: x.title, artist: x.user.name, album: '',
-      art: a['150x150'], artBig: a['480x480'], dur: x.duration,
-      previewUrl: AUD + '/tracks/' + x.id + '/stream?' + APPN, link: 'https://audius.co' + (x.permalink || ''),
-    };
-  });
-}
 async function searchSpotify(q) {
   const j = await sp.api('/search?type=track&limit=10&q=' + encodeURIComponent(q));
   return j.tracks.items.map((x) => {
@@ -115,30 +102,28 @@ async function search(q) {
   q = q.trim(); state.query = q;
   const seq = ++state.searchSeq;
   if (state.src !== 'liked') $('tracks').replaceChildren(el('li', 'msg', q ? 'Searching…' : 'Loading trending songs…'));
-  const [a, s, u] = await Promise.allSettled([q ? searchApple(q) : trending(state.genre), q && sp.connected() ? searchSpotify(q) : Promise.resolve([]), searchAudius(q)]);
+  const [a, s] = await Promise.allSettled([q ? searchApple(q) : trending(state.genre), q && sp.connected() ? searchSpotify(q) : Promise.resolve([])]);
   if (seq !== state.searchSeq) return;
   state.results.apple = a.status === 'fulfilled' ? a.value : [];
   state.results.spotify = s.status === 'fulfilled' ? s.value : [];
-  state.results.audius = u.status === 'fulfilled' ? u.value : [];
-  state.failedU = u.status === 'rejected';
   state.failed = a.status === 'rejected' && !state.results.spotify.length;
   renderList();
 }
 function currentList() {
-  const { apple, spotify, audius } = state.results;
+  const { apple, spotify } = state.results;
   if (state.src === 'liked') return state.likes;
-  if (state.src === 'audius') return audius;
   if (state.src === 'apple') return apple;
   if (state.src === 'spotify') return spotify;
+  const [first, second] = state.primary === 'spotify' ? [spotify, apple] : [apple, spotify];
   const out = [];
-  for (let i = 0; i < Math.max(apple.length, spotify.length); i++) { if (spotify[i]) out.push(spotify[i]); if (apple[i]) out.push(apple[i]); }
+  for (let i = 0; i < Math.max(first.length, second.length); i++) { if (first[i]) out.push(first[i]); if (second[i]) out.push(second[i]); }
   return out;
 }
 function renderList() {
   const ul = $('tracks');
   state.list = currentList();
   const g = GENRES.find((x) => x[1] === state.genre);
-  $('listTitle').textContent = state.src === 'liked' ? 'LIKED SONGS' : state.src === 'audius' ? (state.query ? 'FULL SONGS ON AUDIUS' : 'TRENDING ON AUDIUS · FULL SONGS') :
+  $('listTitle').textContent = state.src === 'liked' ? 'LIKED SONGS' :
     state.query ? 'RESULTS' : 'TRENDING' + (g && g[1] ? ' · ' + g[0].toUpperCase() : ' NOW');
   $('genres').hidden = !!state.query || !(state.src === 'all' || state.src === 'apple');
   if (state.src === 'spotify' && !sp.connected()) {
@@ -149,7 +134,7 @@ function renderList() {
   if (!state.list.length) {
     ul.replaceChildren(el('li', 'msg',
       state.src === 'liked' ? 'Nothing liked yet. Tap the heart on a song to save it here.' :
-      (state.src === 'audius' ? state.failedU : state.failed) ? 'Could not load songs. Check your connection and try again.' :
+      state.failed ? 'Could not load songs. Check your connection and try again.' :
       state.src === 'spotify' && !state.query ? 'Search for something to see Spotify results.' : 'No songs found. Try a different search.'));
     return;
   }
@@ -177,6 +162,14 @@ async function previewFor(t) {
     return hit ? hit.previewUrl : null;
   } catch { return null; }
 }
+// Find the same song on Spotify so an Apple chart/search result can play in full when Spotify is the primary service.
+async function spotifyMatch(t) {
+  try {
+    const hits = await searchSpotify(t.title + ' ' + t.artist.split(/,| & /)[0]);
+    const hit = (t.dur && hits.find((h) => Math.abs(h.dur - t.dur) < 4)) || hits[0];
+    return hit ? hit.uri : null;
+  } catch { return null; }
+}
 async function playIndex(i) {
   const t = state.queue[i]; if (!t) return;
   const seq = ++state.playSeq;
@@ -185,11 +178,14 @@ async function playIndex(i) {
   showTrack(t); loadLyrics(t, seq);
   document.querySelectorAll('.track').forEach((b, n) => b.classList.toggle('on', !!state.list[n] && state.list[n].id === t.id));
 
-  if (t.src === 'spotify' && sp.ready) {
-    audio.pause(); state.backend = 'spotify'; state.offset = 0;
-    $('mode').textContent = 'Spotify';
-    try { await sp.play(t.uri); return; } catch (e) { toast('Spotify playback failed, using a preview instead.'); }
-    if (seq !== state.playSeq) return;
+  if (sp.ready && (t.src === 'spotify' || state.primary === 'spotify')) {
+    if (!t.uri) { t.uri = await spotifyMatch(t); if (seq !== state.playSeq) return; }
+    if (t.uri) {
+      audio.pause(); state.backend = 'spotify'; state.offset = 0;
+      $('mode').textContent = 'Full song · Spotify';
+      try { await sp.play(t.uri); return; } catch (e) { toast('Spotify playback failed, using a preview instead.'); }
+      if (seq !== state.playSeq) return;
+    }
   }
   if (sp.ready) sp.player.pause().catch(() => {});
   state.backend = 'audio'; state.offset = t.full ? 0 : null;
@@ -258,12 +254,9 @@ function showTrack(t) {
   const links = [
     ['Apple Music', t.src === 'apple' ? t.link : 'https://music.apple.com/us/search?term=' + q],
     ['Spotify', t.src === 'spotify' ? t.link : 'https://open.spotify.com/search/' + q],
-    ['YouTube Music', 'https://music.youtube.com/search?q=' + q],
-    ['SoundCloud', 'https://soundcloud.com/search?q=' + q],
-    ['Amazon Music', 'https://music.amazon.com/search/' + q],
   ];
-  if (t.src === 'audius') links.unshift(['Audius', t.link]);
-  $('openIn').replaceChildren(...links.map(([n, h]) => { const a = el('a', null, n); a.href = h; a.target = '_blank'; a.rel = 'noopener'; return a; }));
+  if (state.primary === 'spotify') links.reverse();
+  $('openIn').replaceChildren(...links.map(([n, h]) => { const a = el('a', null, 'Open in ' + n); a.href = h; a.target = '_blank'; a.rel = 'noopener'; return a; }));
   if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({ title: t.title, artist: t.artist, album: t.album, artwork: t.artBig ? [{ src: t.artBig, sizes: '600x600' }] : [] });
   }
@@ -634,10 +627,16 @@ const sp = {
   },
 };
 function refreshSpUI() {
-  const on = sp.connected(), b = $('settingsBtn');
-  b.textContent = on ? (sp.ready ? 'Spotify connected' : 'Spotify: search only') : 'Connect Spotify';
-  b.classList.toggle('ok', on);
+  const on = sp.connected(), b = $('settingsBtn'), pSp = state.primary === 'spotify';
+  b.textContent = 'Primary: ' + SRC_LABEL[state.primary];
+  b.classList.toggle('ok', !pSp || sp.ready);
   $('spLogout').hidden = !on;
+  document.querySelectorAll('#primarySeg button').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.p === state.primary)));
+  $('chips').querySelectorAll('.chip').forEach((c) => c.classList.toggle('primary', c.dataset.src === state.primary));
+  $('primaryNote').textContent = !pSp ? 'Apple Music charts and results come first. Songs play as 30-second previews.' :
+    sp.ready ? 'Spotify results come first and every song plays in full through Spotify.' :
+    on ? 'Spotify results come first. Full playback starts once the Spotify player is ready (Premium only); until then songs play as previews.' :
+    'Connect Spotify below to use it. Until then Apple Music previews are used.';
   $('spStatus').textContent = on ? (sp.ready ? 'Connected. Full playback is ready.' : 'Connected. Search works; full playback starts once the Spotify player is ready (Premium only).') : '';
 }
 function openSettings() {
@@ -647,6 +646,12 @@ function openSettings() {
   $('settings').showModal();
 }
 $('settingsBtn').onclick = openSettings;
+$('primarySeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b || b.dataset.p === state.primary) return;
+  state.primary = b.dataset.p; store.set('primary', state.primary);
+  refreshSpUI(); renderList(); if (state.track) showTrack(state.track);
+  toast('Primary service: ' + SRC_LABEL[state.primary]);
+});
 $('spConnect').onclick = () => {
   const id = $('clientId').value.trim();
   if (!/^[0-9a-f]{32}$/i.test(id)) { $('spStatus').textContent = 'That does not look like a Client ID (32 letters and numbers).'; return; }
@@ -721,10 +726,14 @@ $('note').addEventListener('input', () => store.set('note', $('note').value));
   await sp.handleRedirect();
   refreshSpUI();
   sp.initPlayer();
-  const last = store.get('last');
+  // drop anything saved from services that are no longer offered
+  const known = (t) => t && SRC_LABEL[t.src];
+  if (state.likes.some((t) => !known(t))) { state.likes = state.likes.filter(known); store.set('likes', state.likes); }
+  let last = store.get('last');
+  if (last && last.queue && !last.queue.every(known)) { last = null; store.del('last'); }
   if (last && last.queue && last.queue[last.index]) { // bring back the last song, paused
     state.queue = last.queue; state.index = last.index; state.track = last.queue[last.index];
-    showTrack(state.track); $('mode').textContent = state.track.full ? 'Full song' : 'Preview';
+    showTrack(state.track); $('mode').textContent = 'Preview';
   }
   search('');
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
