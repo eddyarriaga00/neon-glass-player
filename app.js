@@ -157,14 +157,57 @@ async function trending(genre) {
 }
 async function searchSpotify(q) {
   const j = await sp.api('/search?type=track&limit=10&q=' + encodeURIComponent(q));
-  return j.tracks.items.map((x) => {
-    const imgs = x.album.images || [];
-    return {
-      id: 's' + x.id, src: 'spotify', title: x.name, artist: x.artists.map((a) => a.name).join(', '), album: x.album.name,
-      art: (imgs[imgs.length - 1] || {}).url, artBig: (imgs[0] || {}).url,
-      dur: x.duration_ms / 1000, uri: x.uri, link: x.external_urls.spotify,
-    };
-  });
+  return j.tracks.items.map(spTrack);
+}
+function spTrack(x) {
+  const al = x.album || {}, imgs = al.images || [];
+  return {
+    id: 's' + x.id, src: 'spotify', title: x.name, artist: (x.artists || []).map((a) => a.name).join(', '), album: al.name || '',
+    art: (imgs[imgs.length - 1] || {}).url, artBig: (imgs[0] || {}).url,
+    dur: (x.duration_ms || 0) / 1000, uri: x.uri, link: (x.external_urls || {}).spotify,
+  };
+}
+// Spotify tab home: Liked Songs and the user's playlists as a grid of tiles.
+async function renderSpLib(ul) {
+  $('listTitle').textContent = 'YOUR SPOTIFY';
+  const here = () => state.src === 'spotify' && !state.query && !(state.album && state.album.sp);
+  if (!/user-library-read/.test(store.get('sp.scope', ''))) {
+    const li = el('li', 'msg', 'Connect Spotify again to let this app see your playlists and liked songs. ');
+    const b = el('button', 'link-btn', 'Reconnect'); b.type = 'button';
+    b.onclick = () => { const id = store.get('sp.cid'); if (id) sp.login(id); else openSettings(); };
+    li.append(b); ul.replaceChildren(li); return;
+  }
+  if (!sp.lib) {
+    skeleton();
+    try { sp.lib = await sp.playlists(); }
+    catch { if (here()) ul.replaceChildren(el('li', 'msg', 'Could not load your Spotify playlists. Check your connection and try again.')); return; }
+    if (!here()) return;
+  }
+  const tile = (p, i) => {
+    const b = el('button', 'pl' + (p.id === 'liked' ? ' liked' : '')); b.type = 'button'; b.style.setProperty('--i', Math.min(i, 14));
+    let pic;
+    if (p.id === 'liked') { pic = el('span', 'pic'); pic.innerHTML = HEART; }
+    else if (p.art) { pic = el('img', 'pic'); pic.src = p.art; pic.alt = ''; pic.loading = 'lazy'; pic.draggable = false; }
+    else pic = el('span', 'pic');
+    const d = el('span'); d.append(el('b', null, p.name), el('small', null, p.note));
+    b.append(pic, d); b.onclick = () => openSpList(p); return b;
+  };
+  const li = el('li', 'sp-lib'), g = el('div', 'sp-grid');
+  g.append(...[{ id: 'liked', name: 'Liked Songs', note: 'Your saved songs' }, ...sp.lib].map(tile));
+  li.append(g); ul.replaceChildren(li); ul.scrollTop = 0;
+}
+async function openSpList(p) {
+  const seq = ++state.searchSeq; skeleton();
+  try {
+    const songs = p.id === 'liked' ? await sp.liked() : await sp.playlistTracks(p.id);
+    if (seq !== state.searchSeq) return;
+    state.album = { sp: true, name: p.name, artist: 'Spotify', art: p.art || '', year: '', back: '', songs };
+    state.query = ''; state.failed = false; renderList();
+  } catch (e) {
+    if (seq !== state.searchSeq) return;
+    toast(/403/.test(e.message) ? 'Spotify only shares playlists you made or collaborate on.' : 'Could not load that playlist.');
+    renderList();
+  }
 }
 async function search(q) {
   q = q.trim(); state.query = q;
@@ -181,7 +224,7 @@ function currentList() {
   const { apple, spotify } = state.results;
   if (state.src === 'liked') return state.likes;
   if (state.src === 'apple') return apple;
-  if (state.src === 'spotify') return spotify;
+  if (state.src === 'spotify') return state.album && state.album.sp ? state.album.songs : spotify;
   const [first, second] = state.primary === 'spotify' ? [spotify, apple] : [apple, spotify];
   const out = [];
   for (let i = 0; i < Math.max(first.length, second.length); i++) { if (first[i]) out.push(first[i]); if (second[i]) out.push(second[i]); }
@@ -191,15 +234,16 @@ function renderList() {
   const ul = $('tracks');
   state.list = currentList();
   const g = GENRES.find((x) => x[1] === state.genre);
-  const album = state.src !== 'liked' && state.src !== 'spotify' ? state.album : null;
-  $('listTitle').textContent = state.src === 'liked' ? 'LIKED SONGS' : album ? 'ALBUM' :
+  const album = state.album && (state.album.sp ? state.src === 'spotify' : state.src !== 'liked' && state.src !== 'spotify') ? state.album : null;
+  $('listTitle').textContent = state.src === 'liked' ? 'LIKED SONGS' : album ? (album.sp ? 'PLAYLIST' : 'ALBUM') :
     state.query ? 'RESULTS' : 'TRENDING' + (g && g[1] ? ' · ' + g[0].toUpperCase() : ' NOW');
-  $('genres').hidden = !!state.query || !!state.album || !(state.src === 'all' || state.src === 'apple');
+  $('genres').hidden = !!state.query || !!album || !(state.src === 'all' || state.src === 'apple');
   if (state.src === 'spotify' && !sp.connected()) {
-    const li = el('li', 'msg', 'Spotify is not connected yet. ');
+    const li = el('li', 'msg', 'Connect Spotify to see your playlists and liked songs here. ');
     const b = el('button', 'link-btn', 'Connect Spotify'); b.type = 'button'; b.onclick = openSettings; li.append(b);
     ul.replaceChildren(li); return;
   }
+  if (state.src === 'spotify' && !state.query && !album) return void renderSpLib(ul);
   if (!state.list.length) {
     ul.replaceChildren(el('li', 'msg',
       state.src === 'liked' ? 'Nothing liked yet. Tap the heart on a song to save it here.' :
@@ -207,7 +251,7 @@ function renderList() {
       state.src === 'spotify' && !state.query ? 'Search for something to see Spotify results.' : 'No songs found. Try a different search.'));
     return;
   }
-  const chart = !state.query && !state.album && (state.src === 'all' || state.src === 'apple');
+  const chart = !state.query && !album && (state.src === 'all' || state.src === 'apple');
   const play = (i) => () => { if (state.query) addRecent(state.query); state.queue = state.list; state.forced = 0; playIndex(i); setView('player'); };
   const rows = state.list.map((t, i) => {
     const li = trackRow(t, { rank: chart || album ? i + 1 : 0, onPlay: play(i), actions: true });
@@ -238,7 +282,7 @@ function renderList() {
   }
   if (album) {
     const li = el('li', 'album-head'), d = el('div');
-    const im = el('img'); im.src = album.art.replace('600x600bb', '300x300bb'); im.alt = ''; im.draggable = false;
+    const im = el('img'); if (album.art) im.src = album.art.replace('600x600bb', '300x300bb'); im.alt = ''; im.draggable = false;
     const back = el('button', 'act', '\u2039 Back'); back.type = 'button';
     back.onclick = () => { $('q').value = album.back; $('qClear').hidden = !album.back; search(album.back); };
     d.append(el('small', null, [album.year, state.list.length + (state.list.length === 1 ? ' song' : ' songs')].filter(Boolean).join(' \u00b7 ')),
@@ -928,7 +972,29 @@ const sp = {
   player: null, ready: false, deviceId: null,
   st: { pos: 0, ts: 0, paused: true, dur: 0 },
   redirect: location.origin + location.pathname.replace(/index\.html$/, ''),
-  scopes: 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state',
+  scopes: 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state playlist-read-private playlist-read-collaborative user-library-read',
+  lib: null,
+  async pages(path, max = 4) { // follow "next" links, up to max pages
+    let out = [], url = path;
+    for (let i = 0; i < max && url; i++) {
+      const j = await this.api(url); if (!j) break;
+      out = out.concat(j.items || []); url = j.next ? j.next.replace('https://api.spotify.com/v1', '') : null;
+    }
+    return out;
+  },
+  async playlists() {
+    return (await this.pages('/me/playlists?limit=50', 2)).filter(Boolean).map((p) => {
+      const n = (p.items || p.tracks || {}).total;
+      return { id: p.id, name: p.name, art: ((p.images || [])[0] || {}).url || '', note: n != null ? n + (n === 1 ? ' song' : ' songs') : 'Playlist' };
+    });
+  },
+  async liked() { return (await this.pages('/me/tracks?limit=50')).map((r) => r.track).filter((x) => x && x.id).map(spTrack); },
+  async playlistTracks(id) {
+    let rows;
+    try { rows = await this.pages('/playlists/' + id + '/items?limit=50'); }
+    catch (e) { if (!/404/.test(e.message)) throw e; rows = await this.pages('/playlists/' + id + '/tracks?limit=50'); } // older name for the same thing
+    return rows.map((r) => r.item || r.track).filter((x) => x && x.id && x.type !== 'episode').map(spTrack);
+  },
   connected() { return !!store.get('sp.tok'); },
   position() { const s = this.st; return (s.paused ? s.pos : Math.min(s.dur * 1000, s.pos + Date.now() - s.ts)) / 1000; },
   async login(clientId) {
@@ -949,6 +1015,7 @@ const sp = {
     });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error_description || 'Spotify sign-in failed');
+    if (j.scope) store.set('sp.scope', j.scope);
     const old = store.get('sp.tok') || {};
     store.set('sp.tok', { access: j.access_token, refresh: j.refresh_token || old.refresh, exp: Date.now() + (j.expires_in - 60) * 1000 });
   },
@@ -970,7 +1037,7 @@ const sp = {
     this.player.activateElement && this.player.activateElement();
     return this.api('/me/player/play?device_id=' + this.deviceId, { method: 'PUT', body: JSON.stringify({ uris: [uri] }) });
   },
-  logout() { store.del('sp.tok'); this.ready = false; if (this.player) this.player.disconnect(); this.player = null; refreshSpUI(); },
+  logout() { store.del('sp.tok'); store.del('sp.scope'); this.lib = null; this.ready = false; if (this.player) this.player.disconnect(); this.player = null; refreshSpUI(); },
   async handleRedirect() {
     const q = new URLSearchParams(location.search);
     if (!q.has('code') && !q.has('error')) return;

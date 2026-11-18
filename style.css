@@ -572,3 +572,17 @@ dialog { max-height: 88dvh; overflow-y: auto; }
   .up-list .track { background: rgba(255, 255, 255, .05); }
   .open-in { padding: 2px 0 6px; }
 }
+
+/* ---------- v15: Spotify library tiles ---------- */
+.sp-lib { flex: none; animation: none !important; }
+.sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.pl { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 6px; border-radius: 12px; text-align: left; background: rgba(255, 255, 255, .06); border: 1px solid var(--line); animation: rise .4s var(--ease) both; animation-delay: calc(var(--i, 0) * 28ms); transition: transform .15s, background .2s; }
+.pl:hover { background: rgba(255, 255, 255, .1); }
+.pl:active { transform: scale(.96); }
+.pl .pic { width: 46px; height: 46px; flex: none; border-radius: 8px; object-fit: cover; display: grid; place-items: center; background: linear-gradient(135deg, var(--pink), var(--violet) 55%, var(--cyan)); }
+.pl .pic svg { width: 20px; height: 20px; fill: #fff; stroke: none; }
+.pl > span:last-child { min-width: 0; flex: 1; }
+.pl b, .pl small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl b { font-size: 12.5px; font-weight: 600; }
+.pl small { font-size: 10.5px; color: var(--dim); }
+.pl.liked { grid-column: 1 / -1; background: linear-gradient(90deg, color-mix(in srgb, var(--pink) 26%, transparent), color-mix(in srgb, var(--violet) 18%, transparent)); }
