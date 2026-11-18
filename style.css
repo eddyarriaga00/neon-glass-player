@@ -229,7 +229,8 @@ dialog::backdrop { background: rgba(5, 2, 12, .7); backdrop-filter: blur(4px); }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 /* ---------- phone ---------- */
-@media (max-width: 880px) {
+@media (max-width: 880px), (max-height: 520px) and (orientation: landscape) {
+  #popBtn { display: none; }
   .top { padding: 6px 14px 2px; }
   .app { display: block; padding: 4px 10px 0; }
   .library { height: 100%; border-radius: 18px 18px 0 0; border-bottom: 0; padding: 12px 12px 0; }
@@ -259,7 +260,7 @@ dialog::backdrop { background: rgba(5, 2, 12, .7); backdrop-filter: blur(4px); }
   .grab { font-size: 9px; letter-spacing: .3em; color: var(--dim); position: relative; padding-top: 12px; }
   .grab::before { content: ""; position: absolute; top: 0; left: 50%; width: 32px; height: 3.5px; margin-left: -16px; border-radius: 4px; background: rgba(255, 255, 255, .3); }
   .pill { font-size: 11px; padding: 6px 12px; border-radius: 99px; border: 1px solid var(--line); background: rgba(255, 255, 255, .07); }
-  .art-wrap { width: min(76vw, 42dvh); }
+  .art-wrap { width: min(84vw, 43dvh); }
   .meta { width: 100%; margin-top: 0; text-align: left; }
   h1 { font-size: 19px; -webkit-line-clamp: 1; }
   .sub { font-size: 13px; }
@@ -303,6 +304,21 @@ dialog::backdrop { background: rgba(5, 2, 12, .7); backdrop-filter: blur(4px); }
 @media (max-width: 880px) and (max-height: 640px) {
   .peek { display: none; }
   .art-wrap { width: min(66vw, 34dvh); }
+}
+/* phone held sideways: art on the left, controls on the right */
+@media (max-height: 520px) and (orientation: landscape) {
+  .player { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr auto auto auto 1fr; column-gap: 32px; align-items: center; justify-items: stretch; padding-left: max(24px, env(safe-area-inset-left)); padding-right: max(24px, env(safe-area-inset-right)); }
+  .sheet-head { grid-column: 1 / -1; min-height: 36px; }
+  .art-wrap { grid-column: 1; grid-row: 2 / -1; width: min(62dvh, 34vw); align-self: center; }
+  .meta { grid-column: 2; grid-row: 3; }
+  .progress { grid-column: 2; grid-row: 4; }
+  .controls { grid-column: 2; grid-row: 5; margin-top: 6px; }
+  .peek, .open-in { display: none; }
+  #viz { grid-column: 1 / -1; }
+  .is-playing .vinyl { transform: translateX(22%); }
+  .tracks { display: grid; grid-template-columns: 1fr 1fr; align-content: start; }
+  .lyrics { padding-left: max(24px, env(safe-area-inset-left)); padding-right: max(24px, env(safe-area-inset-right)); }
+  .lines { padding: 12% 0 30%; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition-duration: .01s !important; scroll-behavior: auto !important; }

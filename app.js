@@ -8,7 +8,7 @@ const store = {
 const audio = $('audio');
 const app = document.querySelector('.app');
 const root = document.documentElement;
-const isPhone = () => matchMedia('(max-width: 880px)').matches;
+const isPhone = () => matchMedia('(max-width: 880px), (max-height: 520px) and (orientation: landscape)').matches;
 const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
 
 const state = {
