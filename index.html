@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=16">
+<link rel="stylesheet" href="style.css?v=17">
 </head>
 <body>
 <div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="grid"></div></div>
@@ -113,6 +113,13 @@
   <button id="miniNext" type="button" aria-label="Next"><svg viewBox="0 0 24 24" class="solid"><path d="M17 6v12M5 6l10 6-10 6z"/></svg></button>
 </div>
 
+<nav class="tabbar" id="tabbar" aria-label="Sections">
+  <button type="button" data-src="all" aria-current="true"><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg><span>Home</span></button>
+  <button type="button" data-src="apple" aria-current="false"><svg viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-6"/></svg><span>Charts</span></button>
+  <button type="button" data-src="spotify" aria-current="false"><svg viewBox="0 0 24 24"><path d="M5 4v16M10 4v16M14.5 5.5 19 20"/></svg><span>Library</span></button>
+  <button type="button" data-src="liked" aria-current="false"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.600-7 10-7 10z"/></svg><span>Liked</span></button>
+</nav>
+
 <dialog id="settings">
   <form method="dialog" class="dlg">
     <h2>Settings</h2>
@@ -157,6 +164,6 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="none" playsinline></audio>
-<script src="app.js?v=16"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

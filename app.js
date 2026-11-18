@@ -233,6 +233,7 @@ function currentList() {
 function renderList() {
   const ul = $('tracks');
   state.list = currentList();
+  syncTabs(); $('listTitle').classList.remove('big');
   const g = GENRES.find((x) => x[1] === state.genre);
   const album = state.album && (state.album.sp ? state.src === 'spotify' : state.src !== 'liked' && state.src !== 'spotify') ? state.album : null;
   $('listTitle').textContent = state.src === 'liked' ? 'LIKED SONGS' : album ? (album.sp ? 'PLAYLIST' : 'ALBUM') :
@@ -316,7 +317,8 @@ async function renderHome(ul) {
   const spOk = sp.connected() && /user-library-read/.test(store.get('sp.scope', ''));
   const hist = store.get('hist', []).filter((t) => t && SRC_LABEL[t.src]);
   const hr = new Date().getHours();
-  $('listTitle').textContent = hr < 5 ? 'LATE NIGHT' : hr < 12 ? 'GOOD MORNING' : hr < 18 ? 'GOOD AFTERNOON' : 'GOOD EVENING';
+  $('listTitle').textContent = hr < 5 ? 'Late night' : hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+  $('listTitle').classList.add('big');
   const title = (s) => el('li', 'list-title sub', s);
   const covers = (cls, items) => { const li = el('li', 'hero ' + cls), sc = el('div', 'hero-row'); sc.append(...items); li.append(sc); return li; };
   const cover = (art, name, onPick, heart) => {
@@ -331,18 +333,32 @@ async function renderHome(ul) {
       const li = trackRow(t, { onPlay: () => { state.queue = songs; state.forced = 0; playIndex(i); setView('player'); }, actions: true });
       li.style.setProperty('--i', Math.min(i, 14)); rows.push(li);
     };
-    if (hist.length >= 3) rows.push(title('JUMP BACK IN'), covers('back', hist.map((t, i) => cover(artAt(t, 200), t.title, () => { state.queue = hist; state.forced = 0; playIndex(i); setView('player'); }))));
+    if (hist.length) { // bento: the last song big, the few before it as shortcut tiles
+      const pick = (i) => () => { state.queue = hist; state.forced = 0; playIndex(i); setView('player'); };
+      const li = el('li', 'bento'), t0 = hist[0], big = el('button', 'b-big'); big.type = 'button';
+      const im = el('img'); im.src = artAt(t0, 600); im.alt = ''; im.draggable = false;
+      const cap = el('span'); cap.append(el('small', 'k', 'Pick up where you left off'), el('b', null, t0.title), el('small', null, t0.artist));
+      const go = el('em'); go.innerHTML = '<svg viewBox="0 0 24 24" class="solid"><path d="M8 5v14l11-7z"/></svg>';
+      big.append(im, cap, go); big.onclick = pick(0); li.append(big);
+      const rest = hist.slice(1, 5), n = rest.length - rest.length % 2;
+      rest.slice(0, n).forEach((t, k) => {
+        const b = el('button', 'b-tile'); b.type = 'button';
+        const i2 = el('img'); i2.src = artAt(t, 200); i2.alt = ''; i2.loading = 'lazy'; i2.draggable = false;
+        b.append(i2, el('b', null, t.title)); b.onclick = pick(k + 1); li.append(b);
+      });
+      rows.push(li);
+    }
     if (spOk) {
       const open = (p) => () => { $('chips').querySelector('[data-src="spotify"]').click(); openSpList(p); };
-      if (sp.lib) rows.push(title('YOUR PLAYLISTS'), covers('pls', [cover('', 'Liked Songs', open({ id: 'liked', name: 'Liked Songs' }), true), ...sp.lib.map((p) => cover(p.art, p.name, open(p)))]));
-      if (mix && mix.length) { rows.push(title('FROM YOUR PLAYLISTS')); const a = el('li', 'list-acts'); a.append(actsRow()); rows.push(a); mix.forEach(add); }
+      if (sp.lib) rows.push(title('Your playlists'), covers('pls', [cover('', 'Liked Songs', open({ id: 'liked', name: 'Liked Songs' }), true), ...sp.lib.map((p) => cover(p.art, p.name, open(p)))]));
+      if (mix && mix.length) { rows.push(title('From your playlists')); const a = el('li', 'list-acts'); a.append(actsRow()); rows.push(a); mix.forEach(add); }
     } else {
       const li = el('li', 'connect'), b = el('button', 'act main', sp.connected() ? 'Reconnect Spotify' : 'Connect Spotify'); b.type = 'button';
       b.onclick = () => { const id = store.get('sp.cid'); if (sp.connected() && id) sp.login(id); else openSettings(); };
       li.append(el('b', null, 'Make this page yours'), el('p', null, 'Connect Spotify and your playlists and liked songs show up right here.'), b); rows.push(li);
-      if (state.likes.length) { rows.push(title('YOUR LIKED SONGS')); state.likes.slice(0, 6).forEach(add); }
+      if (state.likes.length) { rows.push(title('Your liked songs')); state.likes.slice(0, 6).forEach(add); }
     }
-    (recs || []).forEach(([artist, list]) => { if (list.length) { rows.push(title('BECAUSE YOU PLAY ' + artist.toUpperCase())); list.forEach(add); } });
+    (recs || []).forEach(([artist, list]) => { if (list.length) { rows.push(title('Because you play ' + artist)); list.forEach(add); } });
     if (loading) for (let i = 0; i < 4; i++) { const li = el('li', 'skel'); li.append(el('i'), el('span')); rows.push(li); }
     state.list = songs;
     ul.replaceChildren(...rows);
@@ -389,6 +405,10 @@ function trackRow(t, { rank = 0, onPlay, actions = false }) {
   ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => b.addEventListener(ev, clear));
   b.addEventListener('contextmenu', (e) => { e.preventDefault(); if (!held) playNext(t); });
   return li;
+}
+function syncTabs() {
+  $('chips').querySelectorAll('.chip').forEach((x) => x.classList.toggle('on', x.dataset.src === state.src));
+  document.querySelectorAll('#tabbar button').forEach((b) => b.setAttribute('aria-current', String(b.dataset.src === state.src)));
 }
 function toggleLike(t) {
   const i = state.likes.findIndex((x) => x.id === t.id), on = i < 0;
@@ -1262,6 +1282,14 @@ $('artColors').onchange = () => {
   if (!state.lyrics || !state.lyrics.synced || state.offset === null) return;
   state.lyHold = Date.now() + 3500; $('lines').classList.add('browse');
 }, { passive: true }));
+// Bottom tabs (portrait phone). Tapping the tab you are on goes back to its top.
+$('tabbar').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  buzz();
+  if (b.dataset.src !== state.src) return void $('chips').querySelector('[data-src="' + b.dataset.src + '"]').click();
+  if (state.album || state.query) { clearTimeout(typeTimer); $('q').value = ''; $('qClear').hidden = true; search(''); }
+  $('tracks').scrollTo({ top: 0, behavior: 'smooth' });
+});
 $('like').onclick = () => { if (state.track) toggleLike(state.track); };
 function setVol(v) {
   $('vol').value = v; $('vol').style.setProperty('--p', v + '%');
