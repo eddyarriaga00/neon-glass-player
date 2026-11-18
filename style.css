@@ -302,3 +302,5 @@ dialog::backdrop { background: rgba(5, 2, 12, .7); backdrop-filter: blur(4px); }
 .genres { margin-top: 8px; }
 .genres .chip { font-size: 12px; padding: 5px 12px; border-color: transparent; background: rgba(255, 255, 255, .05); }
 .genres .chip.on { border-color: color-mix(in srgb, var(--cyan) 60%, transparent); background: color-mix(in srgb, var(--cyan) 14%, transparent); box-shadow: none; }
+/* keep the visualizer behind the controls readable on desktop */
+@media (min-width: 881px) { #viz { opacity: .26; height: 32%; } }
