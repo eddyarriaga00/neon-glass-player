@@ -953,7 +953,7 @@ vec3 sunset(vec2 uv) {
   if (uv.y > hz) {
     float y = uv.y - hz;
     col = mix(c * .5, NIGHT, smoothstep(0., 1., y));
-    vec2 g = floor(uv * 42.); float st = step(.985, h(g));
+    vec2 g = floor(uv * 42.); float st = step(.985, h(g)) * smoothstep(.22, .04, length(fract(uv * 42.) - .5));
     col += st * (.4 + .6 * sin(t * 2. + h(g + 1.) * 6.28)) * smoothstep(.15, .7, y) * .7;
     vec2 sp = uv - vec2(0., hz + .44);
     float d = length(sp), R = .34 + e * .025;
