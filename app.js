@@ -33,6 +33,10 @@ const state = {
   forced: 0,         // songs lined up with "play next" that go ahead of shuffle
   tab: 'lyrics',     // side panel: 'lyrics' | 'queue'
   playSeq: 0,
+  album: null,       // album page being shown in the list
+  shufNext: null,    // the song shuffle has picked to come next
+  artColors: store.get('artColors', true), // accent colors follow the album art
+  sleepAt: 0,
 };
 
 /* ---------- helpers ---------- */
@@ -42,6 +46,17 @@ function toast(msg) {
   const t = $('toast'); t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
 }
+// A light tap you can feel, where the phone allows it.
+function buzz() {
+  try {
+    if (navigator.vibrate) { navigator.vibrate(10); return; }
+    const l = document.createElement('label'), i = document.createElement('input');
+    l.style.display = 'none'; i.type = 'checkbox'; i.setAttribute('switch', ''); l.append(i);
+    document.head.append(l); l.click(); l.remove();
+  } catch {}
+}
+const calm = matchMedia('(prefers-reduced-motion: reduce)');
+const vt = (fn) => { if (document.startViewTransition && !calm.matches) document.startViewTransition(fn); else fn(); };
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 // Views stack library < player < lyrics. On phones each step down is a history entry so the back button/gesture closes sheets.
 const DEPTH = { library: 0, player: 1, lyrics: 2 };
@@ -68,11 +83,60 @@ async function searchApple(q) {
   const r = await fetch('https://itunes.apple.com/search?entity=song&limit=25&term=' + encodeURIComponent(q));
   if (!r.ok) throw new Error('Apple search failed');
   const j = await r.json();
-  return j.results.filter((x) => x.previewUrl).map((x) => ({
-    id: 'a' + x.trackId, src: 'apple', title: x.trackName, artist: x.artistName, album: x.collectionName || '',
-    art: x.artworkUrl100, artBig: (x.artworkUrl100 || '').replace('100x100bb', '600x600bb'),
-    dur: (x.trackTimeMillis || 0) / 1000, previewUrl: x.previewUrl, link: x.trackViewUrl,
+  return j.results.filter((x) => x.previewUrl).map(appleTrack);
+}
+const appleTrack = (x) => ({
+  id: 'a' + x.trackId, src: 'apple', title: x.trackName, artist: x.artistName, album: x.collectionName || '',
+  art: x.artworkUrl100, artBig: (x.artworkUrl100 || '').replace('100x100bb', '600x600bb'),
+  dur: (x.trackTimeMillis || 0) / 1000, previewUrl: x.previewUrl, link: x.trackViewUrl,
+});
+function skeleton() {
+  $('tracks').replaceChildren(...Array.from({ length: 8 }, (_, i) => {
+    const li = el('li', 'skel'); li.style.setProperty('--i', i); li.append(el('i'), el('span')); return li;
   }));
+}
+// Album page: every song on the album the current song comes from.
+async function openAlbum(t) {
+  const id = t.src === 'apple' && t.link && (t.link.match(/\/album\/[^/]*\/(\d+)/) || [])[1];
+  const allChip = $('chips').querySelector('[data-src="all"]');
+  if (state.src !== 'all') { state.src = 'all'; $('chips').querySelectorAll('.chip').forEach((x) => x.classList.toggle('on', x === allChip)); }
+  $('recents').hidden = true; clearTimeout(typeTimer);
+  setView('library');
+  if (!id) { // no album id (Spotify song): search for the album instead
+    if (!t.album) return;
+    const q = t.album + ' ' + t.artist.split(/,| & /)[0].trim();
+    $('q').value = q; $('qClear').hidden = false; search(q); return;
+  }
+  const seq = ++state.searchSeq, back = state.album ? state.album.back : state.query;
+  skeleton();
+  try {
+    const r = await fetch('https://itunes.apple.com/lookup?entity=song&limit=200&id=' + id);
+    if (!r.ok) throw new Error('lookup');
+    const j = await r.json();
+    if (seq !== state.searchSeq) return;
+    const head = j.results.find((x) => x.wrapperType === 'collection');
+    const songs = j.results.filter((x) => x.wrapperType === 'track' && x.previewUrl).map(appleTrack);
+    if (!head || !songs.length) throw new Error('empty');
+    state.album = { name: head.collectionName, artist: head.artistName, art: (head.artworkUrl100 || '').replace('100x100bb', '600x600bb'), year: (head.releaseDate || '').slice(0, 4), back };
+    state.query = ''; $('q').value = ''; $('qClear').hidden = true;
+    state.results = { apple: songs, spotify: [] }; state.failed = false;
+    renderList();
+  } catch {
+    if (seq !== state.searchSeq) return;
+    toast('Could not open that album.'); search(back);
+  }
+}
+function playAll(shuffle) {
+  if (!state.list.length) return;
+  state.shuffle = shuffle; store.set('shuffle', shuffle); $('shuffle').setAttribute('aria-pressed', String(shuffle));
+  state.queue = state.list; state.forced = 0;
+  playIndex(shuffle ? Math.floor(Math.random() * state.list.length) : 0); setView('player');
+}
+function actsRow(extra) {
+  const d = el('div', 'acts');
+  const p = el('button', 'act main', 'Play'); p.type = 'button'; p.onclick = () => playAll(false);
+  const s = el('button', 'act', 'Shuffle'); s.type = 'button'; s.onclick = () => playAll(true);
+  d.append(p, s); if (extra) d.append(extra); return d;
 }
 async function trending(genre) {
   const r = await fetch('https://itunes.apple.com/us/rss/topsongs/limit=30/' + (genre ? 'genre=' + genre + '/' : '') + 'json');
@@ -102,10 +166,8 @@ async function searchSpotify(q) {
 }
 async function search(q) {
   q = q.trim(); state.query = q;
-  const seq = ++state.searchSeq;
-  if (state.src !== 'liked') $('tracks').replaceChildren(...Array.from({ length: 8 }, (_, i) => {
-    const li = el('li', 'skel'); li.style.setProperty('--i', i); li.append(el('i'), el('span')); return li;
-  }));
+  const seq = ++state.searchSeq; state.album = null;
+  if (state.src !== 'liked') skeleton();
   const [a, s] = await Promise.allSettled([q ? searchApple(q) : trending(state.genre), q && sp.connected() ? searchSpotify(q) : Promise.resolve([])]);
   if (seq !== state.searchSeq) return;
   state.results.apple = a.status === 'fulfilled' ? a.value : [];
@@ -127,9 +189,10 @@ function renderList() {
   const ul = $('tracks');
   state.list = currentList();
   const g = GENRES.find((x) => x[1] === state.genre);
-  $('listTitle').textContent = state.src === 'liked' ? 'LIKED SONGS' :
+  const album = state.src !== 'liked' && state.src !== 'spotify' ? state.album : null;
+  $('listTitle').textContent = state.src === 'liked' ? 'LIKED SONGS' : album ? 'ALBUM' :
     state.query ? 'RESULTS' : 'TRENDING' + (g && g[1] ? ' · ' + g[0].toUpperCase() : ' NOW');
-  $('genres').hidden = !!state.query || !(state.src === 'all' || state.src === 'apple');
+  $('genres').hidden = !!state.query || !!state.album || !(state.src === 'all' || state.src === 'apple');
   if (state.src === 'spotify' && !sp.connected()) {
     const li = el('li', 'msg', 'Spotify is not connected yet. ');
     const b = el('button', 'link-btn', 'Connect Spotify'); b.type = 'button'; b.onclick = openSettings; li.append(b);
@@ -142,10 +205,10 @@ function renderList() {
       state.src === 'spotify' && !state.query ? 'Search for something to see Spotify results.' : 'No songs found. Try a different search.'));
     return;
   }
-  const chart = !state.query && (state.src === 'all' || state.src === 'apple');
+  const chart = !state.query && !state.album && (state.src === 'all' || state.src === 'apple');
   const play = (i) => () => { if (state.query) addRecent(state.query); state.queue = state.list; state.forced = 0; playIndex(i); setView('player'); };
   const rows = state.list.map((t, i) => {
-    const li = trackRow(t, { rank: chart ? i + 1 : 0, onPlay: play(i), actions: true });
+    const li = trackRow(t, { rank: chart || album ? i + 1 : 0, onPlay: play(i), actions: true });
     li.style.setProperty('--i', Math.min(i, 14)); return li;
   });
   if (chart && state.list.length >= 6) { // top of the chart as a row of big covers
@@ -170,6 +233,17 @@ function renderList() {
     li.append(sc);
     rows.unshift(li, el('li', 'list-title sub', $('listTitle').textContent));
     $('listTitle').textContent = 'JUMP BACK IN';
+  }
+  if (album) {
+    const li = el('li', 'album-head'), d = el('div');
+    const im = el('img'); im.src = album.art.replace('600x600bb', '300x300bb'); im.alt = ''; im.draggable = false;
+    const back = el('button', 'act', '\u2039 Back'); back.type = 'button';
+    back.onclick = () => { $('q').value = album.back; $('qClear').hidden = !album.back; search(album.back); };
+    d.append(el('small', null, [album.year, state.list.length + (state.list.length === 1 ? ' song' : ' songs')].filter(Boolean).join(' \u00b7 ')),
+      el('b', null, album.name), el('span', 'by', album.artist), actsRow(back));
+    li.append(im, d); rows.unshift(li);
+  } else if (state.src === 'liked' && state.list.length > 1) {
+    const li = el('li', 'list-acts'); li.append(actsRow()); rows.unshift(li);
   }
   ul.replaceChildren(...rows);
   ul.scrollTop = 0;
@@ -216,6 +290,7 @@ function toggleLike(t) {
   if (state.track && state.track.id === t.id) $('like').setAttribute('aria-pressed', String(on));
   document.querySelectorAll('.row-like').forEach((h) => { if (h.dataset.id === t.id) h.setAttribute('aria-pressed', String(on)); });
   if (on && state.track && state.track.id === t.id) { const h = el('span', 'burst'); h.innerHTML = HEART; $('art').append(h); setTimeout(() => h.remove(), 900); }
+  if (on) buzz();
   toast(on ? 'Added to Liked' : 'Removed from Liked');
   if (state.src === 'liked') renderList();
 }
@@ -226,12 +301,28 @@ function playNext(t) {
   const q = state.queue.filter((x) => x.id !== t.id), at = q.findIndex((x) => x.id === state.track.id);
   state.forced = Math.min(state.forced, q.length - 1 - at);
   q.splice(at + 1 + state.forced, 0, t);
-  state.queue = q; state.index = at; state.forced++;
+  state.queue = q; state.index = at; state.forced++; state.shufNext = null; buzz();
   store.set('last', { queue: q.slice(0, 60), index: Math.max(at, 0) });
   toast('Playing next: ' + t.title);
   renderQueue();
 }
+// The song the next button will play (shuffle picks ahead so "Up next" is always true).
+function nextIndex() {
+  const n = state.queue.length; if (!n) return -1;
+  if (state.forced > 0 || !state.shuffle || n < 2) return (state.index + 1) % n;
+  if (state.shufNext == null || state.shufNext >= n || state.shufNext === state.index) {
+    do { state.shufNext = Math.floor(Math.random() * n); } while (state.shufNext === state.index);
+  }
+  return state.shufNext;
+}
+function renderNextUp() {
+  const b = $('nextUp'), t = state.track ? state.queue[nextIndex()] : null;
+  const show = !!t && t.id !== state.track.id;
+  b.hidden = !show; if (!show) return;
+  b.querySelector('img').src = t.art || ''; b.querySelector('b').textContent = t.title + ' \u00b7 ' + t.artist;
+}
 function renderQueue() {
+  renderNextUp();
   const ul = $('queue'); if (ul.hidden) return;
   const n = state.queue.length, items = [];
   for (let k = 1; k < n && items.length < 40; k++) {
@@ -241,7 +332,7 @@ function renderQueue() {
   }
   const note = !state.track ? 'Play a song and what comes after it shows up here.' :
     !items.length ? 'Nothing else is lined up. Press and hold a song in the list to play it next.' :
-    state.shuffle && !state.forced ? 'Shuffle is on, so the next song is picked at random from these.' : 'Press and hold a song in the list to play it next.';
+    state.shuffle && !state.forced ? 'Shuffle is on, so songs play in a random order from these.' : 'Press and hold a song in the list to play it next.';
   ul.replaceChildren(el('li', 'msg', note), ...items);
   ul.scrollTop = 0;
 }
@@ -285,7 +376,7 @@ async function spotifyMatch(t) {
 async function playIndex(i) {
   const t = state.queue[i]; if (!t) return;
   const seq = ++state.playSeq;
-  state.index = i; state.track = t; state.offset = t.full ? 0 : null; state.lineIdx = -2;
+  state.index = i; state.track = t; state.offset = t.full ? 0 : null; state.lineIdx = -2; state.shufNext = null;
   store.set('last', { queue: state.queue.slice(0, 60), index: i });
   store.set('hist', [t, ...store.get('hist', []).filter((x) => x.id !== t.id)].slice(0, 12));
   showTrack(t); loadLyrics(t, seq); renderQueue();
@@ -312,9 +403,8 @@ async function playIndex(i) {
 }
 function step(d) {
   const n = state.queue.length; if (!n) return;
-  let i = (state.index + d + n) % n;
+  const i = d > 0 ? nextIndex() : (state.index - 1 + n) % n;
   if (d > 0 && state.forced > 0) state.forced--;
-  else if (state.shuffle && d > 0 && n > 1) { do { i = Math.floor(Math.random() * n); } while (i === state.index); }
   playIndex(i);
 }
 function onEnded() {
@@ -359,7 +449,15 @@ audio.addEventListener('error', () => {
 
 function showTrack(t) {
   $('title').textContent = t.title;
-  $('sub').textContent = t.artist + (t.album ? ' · ' + t.album : '');
+  const sa = el('span', null, t.artist); sa.dataset.act = 'artist';
+  const kids = [sa];
+  if (t.album) { const sb = el('span', null, t.album); sb.dataset.act = 'album'; kids.push(' · ', sb); }
+  $('sub').replaceChildren(...kids);
+  requestAnimationFrame(() => { // long titles slide back and forth instead of being cut off
+    const s = $('title'), h = s.parentNode, over = s.offsetWidth - h.clientWidth;
+    h.classList.toggle('marq', over > 6);
+    h.style.setProperty('--mq', -(over + 34) + 'px'); h.style.setProperty('--mqd', Math.max(5, over / 22 + 4) + 's');
+  });
   $('miniTitle').textContent = t.title; $('miniSub').textContent = t.artist; $('miniArt').src = t.art || ''; $('mini').hidden = false;
   const img = $('artImg');
   if (t.artBig) { img.classList.remove('swap'); void img.offsetWidth; img.src = t.artBig; img.hidden = false; img.classList.add('swap'); tint(t.art || t.artBig); } else img.hidden = true;
@@ -406,23 +504,41 @@ function artSizes(t) {
   if (t.src !== 'apple') return [{ src: t.artBig, sizes: '640x640' }];
   return [128, 256, 512, 1024].map((n) => ({ src: t.artBig.replace(/\/\d+x\d+bb/, '/' + n + 'x' + n + 'bb'), sizes: n + 'x' + n, type: 'image/jpeg' }));
 }
-// Recolor the background glow from the artwork.
+// Recolor the glow, and the accent colors when that setting is on, from the artwork.
+const ART_VARS = ['--glow-a', '--glow-b', '--pink', '--cyan', '--violet'];
+function clearArt() { ART_VARS.forEach((p) => root.style.removeProperty(p)); viz.readColors(); wave.draw(wave.pct); }
+let tintSeq = 0;
 function tint(url) {
-  if (root.dataset.theme === 'mono') return;
+  const seq = ++tintSeq;
+  if (root.dataset.theme === 'mono' || !url) return clearArt();
   const im = new Image(); im.crossOrigin = 'anonymous';
   im.onload = () => {
+    if (seq !== tintSeq) return;
     try {
-      const c = document.createElement('canvas'); c.width = c.height = 8;
-      const x = c.getContext('2d'); x.drawImage(im, 0, 0, 8, 8);
-      const d = x.getImageData(0, 0, 8, 8).data; let r = 0, g = 0, b = 0;
-      for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
-      r /= 64 * 255; g /= 64 * 255; b /= 64 * 255;
-      const mx = Math.max(r, g, b), mn = Math.min(r, g, b), dl = mx - mn;
-      if (dl < 0.06) return; // near-grey art: keep current colors
-      let h = mx === r ? ((g - b) / dl) % 6 : mx === g ? (b - r) / dl + 2 : (r - g) / dl + 4;
-      h = Math.round(h * 60 + 360) % 360;
-      root.style.setProperty('--glow-a', `hsl(${h} 72% 42%)`);
-      root.style.setProperty('--glow-b', `hsl(${(h + 150) % 360} 72% 36%)`);
+      const N = 16, c = document.createElement('canvas'); c.width = c.height = N;
+      const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0, N, N);
+      const d = x.getImageData(0, 0, N, N).data, bins = new Float32Array(24); let total = 0;
+      for (let i = 0; i < d.length; i += 4) { // which hues carry the most color
+        const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), dl = mx - mn, l = (mx + mn) / 2;
+        if (dl < 0.1 || l < 0.1 || l > 0.94) continue;
+        let h = mx === r ? ((g - b) / dl) % 6 : mx === g ? (b - r) / dl + 2 : (r - g) / dl + 4;
+        h = (h * 60 + 360) % 360;
+        bins[Math.floor(h / 15) % 24] += dl * dl; total += dl * dl;
+      }
+      if (total < 1.2) return clearArt(); // near-grey art: theme colors
+      let a = 0, b2 = -1;
+      for (let k = 1; k < 24; k++) if (bins[k] > bins[a]) a = k;
+      for (let k = 0; k < 24; k++) { const far = Math.min(Math.abs(k - a), 24 - Math.abs(k - a)) >= 3; if (far && (b2 < 0 || bins[k] > bins[b2])) b2 = k; }
+      const h1 = a * 15 + 7, two = bins[b2] > bins[a] * 0.18, h2 = two ? b2 * 15 + 7 : (h1 + 40) % 360;
+      const lift = (h) => h > 215 && h < 290 ? 8 : 0; // blues and purples need to be lighter to read on dark
+      root.style.setProperty('--glow-a', `hsl(${h1} 72% 42%)`);
+      root.style.setProperty('--glow-b', `hsl(${two ? h2 : (h1 + 150) % 360} 72% 36%)`);
+      if (state.artColors) {
+        root.style.setProperty('--pink', `hsl(${h1} 100% ${67 + lift(h1)}%)`);
+        root.style.setProperty('--cyan', `hsl(${h2} 92% ${70 + lift(h2)}%)`);
+        root.style.setProperty('--violet', `hsl(${h1} 66% ${50 + lift(h1)}%)`);
+      } else ['--pink', '--cyan', '--violet'].forEach((p) => root.style.removeProperty(p));
+      viz.readColors(); wave.draw(wave.pct);
     } catch {}
   };
   im.src = url;
@@ -433,14 +549,14 @@ const THEME_SW = { neon: ['#ff2fd0', '#29d8ff'], sunset: ['#ff5e3a', '#ffc531'],
 const THEMES = Object.keys(THEME_SW);
 function setTheme(name, announce) {
   root.dataset.theme = name; store.set('theme', name);
-  root.style.removeProperty('--glow-a'); root.style.removeProperty('--glow-b');
+  ART_VARS.forEach((p) => root.style.removeProperty(p));
   if (state.track) tint(state.track.art || state.track.artBig);
   viz.readColors(); wave.draw(wave.pct);
   document.querySelectorAll('#swatches button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.t === name)));
   const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = getComputedStyle(root).getPropertyValue('--bg').trim();
   if (announce) toast('Theme: ' + name[0].toUpperCase() + name.slice(1));
 }
-$('themeBtn').onclick = () => setTheme(THEMES[(THEMES.indexOf(root.dataset.theme) + 1) % THEMES.length], true);
+$('themeBtn').onclick = () => vt(() => setTheme(THEMES[(THEMES.indexOf(root.dataset.theme) + 1) % THEMES.length], true));
 
 /* ---------- visualizer ---------- */
 const viz = {
@@ -557,9 +673,13 @@ function syncLyrics() {
   const t = pos() + state.offset + 0.15;
   let idx = -1;
   for (let i = 0; i < ly.synced.length && ly.synced[i].t <= t; i++) idx = i;
+  const box = $('lines'), kids = box.children;
+  if (idx >= 0 && kids[idx]) { // light sweeps across the line being sung
+    const a = ly.synced[idx].t, b = ly.synced[idx + 1] ? ly.synced[idx + 1].t : a + 5;
+    kids[idx].style.setProperty('--lp', Math.round(Math.max(0, Math.min(1, (t + 0.2 - a) / Math.max(0.4, b - a))) * 100) + '%');
+  }
   if (idx === state.lineIdx) return;
   state.lineIdx = idx;
-  const box = $('lines'), kids = box.children;
   for (let i = 0; i < kids.length; i++) kids[i].className = 'line' + (i < idx ? ' past' : i === idx ? ' cur' : i === idx + 1 ? ' next' : '');
   const cur = kids[Math.max(idx, 0)];
   if (cur) box.scrollTo({ top: cur.offsetTop - box.clientHeight / 2 + cur.clientHeight / 2, behavior: 'smooth' });
@@ -660,6 +780,7 @@ setInterval(() => {
   syncLyrics();
   wave.draw(state.seeking ? +$('seek').value / 10 : pct);
   widget.update(pct);
+  if (state.sleepAt && Date.now() >= state.sleepAt) { setSleep(0, true); if (isPlaying()) togglePlay(); toast('Sleep timer: music paused.'); }
 }, 200);
 $('seek').addEventListener('input', () => {
   state.seeking = true;
@@ -709,6 +830,7 @@ $('seek').addEventListener('change', () => { seekTo((+$('seek').value / 1000) * 
       if (Math.abs(dx) > 70 && state.queue.length && !cancelled) {
         const dir = dx < 0 ? 1 : -1;
         art.style.setProperty('--tx', -dir * 130 + '%'); art.style.opacity = 0;
+        buzz();
         setTimeout(() => {
           step(dir);
           art.classList.add('live'); art.style.setProperty('--tx', dir * 60 + 'px'); art.style.setProperty('--rot', '0deg');
@@ -905,7 +1027,7 @@ $('chips').addEventListener('click', (e) => {
 $('swatches').replaceChildren(...THEMES.map((n) => {
   const b = el('button'); b.type = 'button'; b.dataset.t = n; b.title = n[0].toUpperCase() + n.slice(1); b.setAttribute('aria-label', n + ' theme');
   b.style.background = 'linear-gradient(135deg, ' + THEME_SW[n][0] + ', ' + THEME_SW[n][1] + ')';
-  b.onclick = () => setTheme(n, false); return b;
+  b.onclick = () => vt(() => setTheme(n, false)); return b;
 }));
 const LZ = { s: 0.86, m: 1, l: 1.2 };
 function setLz(z) {
@@ -915,8 +1037,10 @@ function setLz(z) {
 }
 $('lySeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setLz(b.dataset.z); });
 // Tap the artist line to see more from that artist.
-$('sub').onclick = () => {
-  if (!state.track) return;
+$('sub').onclick = (e) => {
+  const hit = e.target.closest('[data-act]');
+  if (!state.track || !hit) return;
+  if (hit.dataset.act === 'album') return void openAlbum(state.track);
   const a = state.track.artist.split(/,| & /)[0].trim();
   if (state.src !== 'all') $('chips').querySelector('[data-src="all"]').click();
   $('q').value = a; $('qClear').hidden = false; $('recents').hidden = true; search(a); setView('library');
@@ -929,7 +1053,7 @@ $('miniNext').onclick = () => step(1);
 $('miniOpen').onclick = () => setView('player');
 $('closePlayer').onclick = () => setView('library');
 $('openLyrics').onclick = $('peek').onclick = () => { setTab('lyrics'); setView('lyrics'); };
-$('openQueue').onclick = () => { setTab('queue'); setView('lyrics'); };
+$('openQueue').onclick = $('nextUp').onclick = () => { setTab('queue'); setView('lyrics'); };
 // Mini player: swipe sideways to skip, swipe up to open.
 (function miniGestures() {
   const m = $('mini'); let g = null, swiped = false;
@@ -939,7 +1063,7 @@ $('openQueue').onclick = () => { setTab('queue'); setView('lyrics'); };
     if (!g) return;
     const dx = e.clientX - g.x, dy = e.clientY - g.y; g = null;
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
-      swiped = true; m.classList.remove('nudge-l', 'nudge-r'); void m.offsetWidth; m.classList.add(dx < 0 ? 'nudge-l' : 'nudge-r'); step(dx < 0 ? 1 : -1);
+      swiped = true; m.classList.remove('nudge-l', 'nudge-r'); void m.offsetWidth; m.classList.add(dx < 0 ? 'nudge-l' : 'nudge-r'); buzz(); step(dx < 0 ? 1 : -1);
     } else if (dy < -30) { swiped = true; setView('player'); }
   });
   m.addEventListener('click', (e) => { if (swiped) { swiped = false; e.stopPropagation(); e.preventDefault(); } }, true);
@@ -951,6 +1075,17 @@ function toggleBtn(id, key, onMsg, offMsg) {
 }
 toggleBtn('shuffle', 'shuffle', 'Shuffle on', 'Shuffle off');
 toggleBtn('repeat', 'repeat', 'Repeating this song', 'Repeat off');
+function setSleep(m, quiet) {
+  state.sleepAt = m ? Date.now() + m * 60000 : 0;
+  document.querySelectorAll('#sleepSeg button').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.m === m)));
+  if (!quiet) toast(m ? 'Music will pause in ' + m + ' minutes.' : 'Sleep timer off.');
+}
+$('sleepSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setSleep(+b.dataset.m); });
+$('artColors').checked = state.artColors;
+$('artColors').onchange = () => {
+  state.artColors = $('artColors').checked; store.set('artColors', state.artColors);
+  if (state.track) tint(state.track.art || state.track.artBig); else clearArt();
+};
 $('like').onclick = () => { if (state.track) toggleLike(state.track); };
 function setVol(v) {
   $('vol').value = v; $('vol').style.setProperty('--p', v + '%');

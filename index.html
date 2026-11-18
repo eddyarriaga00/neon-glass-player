@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 <div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="grid"></div></div>
@@ -64,7 +64,7 @@
       <div class="art" id="art"><img id="artImg" alt="" hidden draggable="false"><span class="art-label">[ ALBUM ART ]</span><i class="shine"></i></div>
     </div>
     <div class="meta">
-      <div class="meta-text"><h1 id="title">Pick a track</h1><p class="sub" id="sub">Search for a song to start</p></div>
+      <div class="meta-text"><h1><span id="title">Pick a track</span></h1><p class="sub" id="sub">Search for a song to start</p></div>
       <button id="like" type="button" aria-label="Like" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.600-7 10-7 10z"/></svg></button>
     </div>
     <div class="progress">
@@ -81,6 +81,7 @@
     </div>
     <label class="vol"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6"/></svg><input id="vol" type="range" min="0" max="100" value="80" aria-label="Volume"></label>
     <button id="peek" class="peek" type="button">Lyrics</button>
+    <button id="nextUp" class="nextup" type="button" hidden><img alt=""><span><small>UP NEXT</small><b></b></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
     <div class="open-in" id="openIn"></div>
   </section>
 
@@ -97,7 +98,7 @@
 <div class="mini" id="mini" hidden>
   <i class="mini-prog" id="miniProg"></i>
   <button class="mini-open" id="miniOpen" type="button" aria-label="Open player">
-    <img id="miniArt" alt=""><span><b id="miniTitle"></b><small id="miniSub"></small></span>
+    <span class="mini-art"><img id="miniArt" alt=""><span class="eq"><i></i><i></i><i></i></span></span><span><b id="miniTitle"></b><small id="miniSub"></small></span>
   </button>
   <button id="miniPlay" type="button" aria-label="Play"><svg viewBox="0 0 24 24" class="solid"><path id="miniIcon" d="M8 5v14l11-7z"/></svg></button>
   <button id="miniNext" type="button" aria-label="Next"><svg viewBox="0 0 24 24" class="solid"><path d="M17 6v12M5 6l10 6-10 6z"/></svg></button>
@@ -108,11 +109,19 @@
     <h2>Settings</h2>
     <h3>Color theme</h3>
     <div class="swatches" id="swatches" role="group" aria-label="Color theme"></div>
+    <label class="sw"><span>Match colors to the album art</span><input type="checkbox" id="artColors"></label>
     <h3>Lyrics size</h3>
     <div class="seg three" id="lySeg" role="group" aria-label="Lyrics size">
       <button type="button" data-z="s">Small</button>
       <button type="button" data-z="m">Medium</button>
       <button type="button" data-z="l">Large</button>
+    </div>
+    <h3>Sleep timer</h3>
+    <div class="seg four" id="sleepSeg" role="group" aria-label="Sleep timer">
+      <button type="button" data-m="0" aria-pressed="true">Off</button>
+      <button type="button" data-m="15" aria-pressed="false">15 min</button>
+      <button type="button" data-m="30" aria-pressed="false">30 min</button>
+      <button type="button" data-m="60" aria-pressed="false">1 hour</button>
     </div>
     <h3>Primary service</h3>
     <div class="seg" id="primarySeg" role="group" aria-label="Primary service">
@@ -139,6 +148,6 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="none" playsinline></audio>
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
