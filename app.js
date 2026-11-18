@@ -188,7 +188,7 @@ function seekTo(s) {
   else if (dur()) audio.currentTime = Math.min(s, dur() - 0.2);
 }
 function setPlayingUI() {
-  const p = isPlaying(), d = p ? 'M7 5h4v14H7zM13 5h4v14h-4z' : 'M8 5v14l11-7z';
+  const p = isPlaying(), d = p ? 'M7 5h2.5v14H7zM14.5 5H17v14h-2.5z' : 'M8 5v14l11-7z';
   $('playIcon').setAttribute('d', d); $('miniIcon').setAttribute('d', d);
   $('play').setAttribute('aria-label', p ? 'Pause' : 'Play'); $('miniPlay').setAttribute('aria-label', p ? 'Pause' : 'Play');
   document.body.classList.toggle('is-playing', p);
