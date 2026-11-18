@@ -37,6 +37,7 @@ const state = {
   shufNext: null,    // the song shuffle has picked to come next
   artColors: store.get('artColors', true), // accent colors follow the album art
   sleepAt: 0,
+  lyHold: 0,         // until when lyrics stop following, because the user is scrolling them
 };
 
 /* ---------- helpers ---------- */
@@ -462,7 +463,7 @@ function showTrack(t) {
   const img = $('artImg');
   if (t.artBig) { img.classList.remove('swap'); void img.offsetWidth; img.src = t.artBig; img.hidden = false; img.classList.add('swap'); tint(t.art || t.artBig); } else img.hidden = true;
   document.title = t.title + ' · ' + t.artist;
-  $('backdrop').style.backgroundImage = t.artBig || t.art ? 'url("' + artAt(t, 300) + '")' : '';
+  root.style.setProperty('--art', t.artBig || t.art ? 'url("' + artAt(t, 300) + '")' : 'none');
   const mt = document.querySelector('.meta-text'); mt.classList.remove('in'); void mt.offsetWidth; mt.classList.add('in');
   wave.seed(t);
   $('like').setAttribute('aria-pressed', String(state.likes.some((x) => x.id === t.id)));
@@ -641,7 +642,8 @@ function renderLyrics() {
   } else {
     box.className = 'lines' + (state.offset === null ? ' plain pick' : '');
     box.replaceChildren(...ly.synced.map((l, i) => {
-      const b = el('button', 'line', l.text); b.type = 'button';
+      const gap = l.text === '\u266a', b = el('button', 'line', gap ? null : l.text); b.type = 'button';
+      if (gap) { b.dataset.gap = '1'; b.setAttribute('aria-label', 'Instrumental'); b.append(el('i'), el('i'), el('i')); }
       b.onclick = () => lineTap(i);
       return b;
     }));
@@ -651,6 +653,7 @@ function renderLyrics() {
 }
 function lineTap(i) {
   const l = state.lyrics.synced[i];
+  state.lyHold = 0; $('lines').classList.remove('browse');
   if (fullLen()) { seekTo(l.t); state.lineIdx = -2; return; }
   // Preview clips start somewhere mid-song: the tapped line tells us where.
   const first = state.offset === null;
@@ -678,11 +681,23 @@ function syncLyrics() {
     const a = ly.synced[idx].t, b = ly.synced[idx + 1] ? ly.synced[idx + 1].t : a + 5;
     kids[idx].style.setProperty('--lp', Math.round(Math.max(0, Math.min(1, (t + 0.2 - a) / Math.max(0.4, b - a))) * 100) + '%');
   }
+  if (state.lyHold && Date.now() > state.lyHold) { state.lyHold = 0; box.classList.remove('browse'); state.lineIdx = -2; }
   if (idx === state.lineIdx) return;
   state.lineIdx = idx;
-  for (let i = 0; i < kids.length; i++) kids[i].className = 'line' + (i < idx ? ' past' : i === idx ? ' cur' : i === idx + 1 ? ' next' : '');
+  for (let i = 0; i < kids.length; i++) {
+    kids[i].className = 'line' + (i < idx ? ' past' : i === idx ? ' cur' : i === idx + 1 ? ' next' : '');
+    kids[i].style.setProperty('--d', Math.min(6, Math.abs(i - Math.max(idx, 0)))); // lines further from the current one are softer
+  }
   const cur = kids[Math.max(idx, 0)];
-  if (cur) box.scrollTo({ top: cur.offsetTop - box.clientHeight / 2 + cur.clientHeight / 2, behavior: 'smooth' });
+  if (!cur || state.lyHold) return;
+  const from = box.scrollTop, to = Math.max(0, Math.min(box.scrollHeight - box.clientHeight, cur.offsetTop - box.clientHeight / 2 + cur.clientHeight / 2)), dy = to - from;
+  const seen = !box.hidden && !(isPhone() && app.dataset.view !== 'lyrics');
+  if (!seen || calm.matches || !cur.animate || Math.abs(dy) < 2 || Math.abs(dy) > box.clientHeight * 0.9) { box.scrollTo({ top: to, behavior: seen && !calm.matches ? 'smooth' : 'auto' }); return; }
+  // Jump the scroll, then let each line glide up from where it was, one after another, so the lines follow like a wave.
+  box.scrollTop = to;
+  for (let i = Math.max(0, idx - 10); i <= Math.min(kids.length - 1, idx + 14); i++) {
+    kids[i].animate([{ translate: '0 ' + dy + 'px' }, { translate: '0 0' }], { duration: 640, delay: Math.max(0, i - idx) * 38, easing: 'cubic-bezier(.22, 1.16, .36, 1)', fill: 'backwards' });
+  }
   if (idx >= 0) { $('peek').textContent = ly.synced[idx].text; $('peek').classList.add('live'); }
 }
 
@@ -1086,6 +1101,10 @@ $('artColors').onchange = () => {
   state.artColors = $('artColors').checked; store.set('artColors', state.artColors);
   if (state.track) tint(state.track.art || state.track.artBig); else clearArt();
 };
+['touchmove', 'wheel'].forEach((ev) => $('lines').addEventListener(ev, () => { // reading ahead: stop following for a moment
+  if (!state.lyrics || !state.lyrics.synced || state.offset === null) return;
+  state.lyHold = Date.now() + 3500; $('lines').classList.add('browse');
+}, { passive: true }));
 $('like').onclick = () => { if (state.track) toggleLike(state.track); };
 function setVol(v) {
   $('vol').value = v; $('vol').style.setProperty('--p', v + '%');

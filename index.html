@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=12">
+<link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
 <div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="grid"></div></div>
@@ -52,7 +52,7 @@
   </section>
 
   <section class="panel player" id="player" aria-label="Now playing">
-    <div class="backdrop" id="backdrop" aria-hidden="true"></div>
+    <div class="backdrop" id="backdrop" aria-hidden="true"><div class="fluid"><i></i><i></i><i></i></div></div>
     <canvas id="viz" aria-hidden="true"></canvas>
     <div class="sheet-head" id="playerHead">
       <button id="closePlayer" type="button" aria-label="Close player"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
@@ -61,6 +61,7 @@
     </div>
     <div class="art-wrap" id="artWrap">
       <div class="vinyl" aria-hidden="true"></div>
+      <div class="art-glow" aria-hidden="true"></div>
       <div class="art" id="art"><img id="artImg" alt="" hidden draggable="false"><span class="art-label">[ ALBUM ART ]</span><i class="shine"></i></div>
     </div>
     <div class="meta">
@@ -86,6 +87,7 @@
   </section>
 
   <section class="panel lyrics" id="lyricsPanel" aria-label="Lyrics">
+    <div class="backdrop" aria-hidden="true"><div class="fluid"><i></i><i></i><i></i></div></div>
     <div class="lyrics-head" id="lyricsHead">
       <button id="closeLyrics" type="button" aria-label="Close lyrics"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
       <div class="tabs" id="sideTabs" role="group" aria-label="Side panel"><button type="button" data-tab="lyrics" aria-pressed="true">LYRICS</button><button type="button" data-tab="queue" aria-pressed="false">UP NEXT</button></div><span id="lyHint" class="hint"></span>
@@ -148,6 +150,6 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="none" playsinline></audio>
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>
