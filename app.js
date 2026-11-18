@@ -229,6 +229,7 @@ function setPlayingUI() {
   $('playIcon').setAttribute('d', d); $('miniIcon').setAttribute('d', d);
   $('play').setAttribute('aria-label', p ? 'Pause' : 'Play'); $('miniPlay').setAttribute('aria-label', p ? 'Pause' : 'Play');
   document.body.classList.toggle('is-playing', p);
+  if ('mediaSession' in navigator && state.track) navigator.mediaSession.playbackState = p ? 'playing' : 'paused';
 }
 audio.addEventListener('play', setPlayingUI);
 audio.addEventListener('pause', setPlayingUI);
@@ -258,7 +259,7 @@ function showTrack(t) {
   if (state.primary === 'spotify') links.reverse();
   $('openIn').replaceChildren(...links.map(([n, h]) => { const a = el('a', null, 'Open in ' + n); a.href = h; a.target = '_blank'; a.rel = 'noopener'; return a; }));
   if ('mediaSession' in navigator) {
-    navigator.mediaSession.metadata = new MediaMetadata({ title: t.title, artist: t.artist, album: t.album, artwork: t.artBig ? [{ src: t.artBig, sizes: '600x600' }] : [] });
+    navigator.mediaSession.metadata = new MediaMetadata({ title: t.title, artist: t.artist, album: t.album, artwork: artSizes(t) });
   }
 }
 if ('mediaSession' in navigator) {
@@ -269,9 +270,16 @@ if ('mediaSession' in navigator) {
     ms.setActionHandler('play', () => { if (!isPlaying()) togglePlay(); });
     ms.setActionHandler('pause', () => { if (isPlaying()) togglePlay(); });
     ms.setActionHandler('seekto', (e) => { seekTo(e.seekTime); state.lineIdx = -2; });
+    ms.setActionHandler('stop', () => { if (isPlaying()) togglePlay(); });
     const posState = () => { try { if (dur()) ms.setPositionState({ duration: dur(), position: Math.min(pos(), dur()), playbackRate: 1 }); } catch {} };
-    ['loadedmetadata', 'seeked', 'play'].forEach((ev) => audio.addEventListener(ev, posState));
+    ['loadedmetadata', 'seeked', 'play', 'pause', 'ratechange'].forEach((ev) => audio.addEventListener(ev, posState));
   } catch {}
+}
+// Artwork in several sizes so car screens, the lock screen and Control Center each get a sharp one.
+function artSizes(t) {
+  if (!t.artBig) return [];
+  if (t.src !== 'apple') return [{ src: t.artBig, sizes: '640x640' }];
+  return [128, 256, 512, 1024].map((n) => ({ src: t.artBig.replace(/\/\d+x\d+bb/, '/' + n + 'x' + n + 'bb'), sizes: n + 'x' + n, type: 'image/jpeg' }));
 }
 // Recolor the background glow from the artwork.
 function tint(url) {
@@ -431,6 +439,58 @@ function syncLyrics() {
   if (idx >= 0) { $('peek').textContent = ly.synced[idx].text; $('peek').classList.add('live'); }
 }
 
+/* ---------- floating widget (desktop: always-on-top mini player) ---------- */
+const widget = {
+  win: null, supported: 'documentPictureInPicture' in window,
+  async toggle() {
+    if (this.win) { this.win.close(); return; }
+    let w;
+    try { w = this.win = await documentPictureInPicture.requestWindow({ width: 340, height: 132 }); }
+    catch { toast('Could not open the widget.'); return; }
+    const d = w.document;
+    const st = d.createElement('style');
+    st.textContent = `
+      *{box-sizing:border-box;margin:0}
+      body{height:100vh;overflow:hidden;color:#f4eefc;font:13px/1.3 "Space Grotesk",system-ui,sans-serif;background:radial-gradient(120% 140% at 0 0,var(--a),transparent 60%),radial-gradient(120% 140% at 100% 100%,var(--b),transparent 60%),var(--bg);display:flex;flex-direction:column;justify-content:center;gap:8px;padding:10px 12px 12px}
+      .row{display:flex;align-items:center;gap:10px;min-width:0}
+      img{width:54px;height:54px;border-radius:9px;object-fit:cover;flex:none;background:linear-gradient(135deg,var(--pink),var(--cyan));box-shadow:0 6px 16px rgba(0,0,0,.45)}
+      .t{min-width:0;flex:1}
+      b,small,p{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      b{font-size:13px;font-weight:600} small{font-size:11px;opacity:.7}
+      p{font-size:11px;color:var(--cyan);margin-top:3px;min-height:14px;text-shadow:0 0 10px var(--cyan)}
+      .c{display:flex;gap:2px;flex:none}
+      button{width:30px;height:30px;border:0;border-radius:50%;background:none;color:inherit;cursor:pointer;display:grid;place-items:center}
+      button:hover{background:rgba(255,255,255,.12)} button:active{transform:scale(.88)}
+      #wp{background:var(--violet);box-shadow:0 0 14px var(--cyan)}
+      svg{width:16px;height:16px;fill:currentColor}
+      .bar{height:3px;border-radius:3px;background:rgba(255,255,255,.16);overflow:hidden;cursor:pointer}
+      .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--pink),var(--cyan))}`;
+    d.head.append(st);
+    d.body.innerHTML = '<div class="row"><img id="wa" alt=""><div class="t"><b id="wt"></b><small id="ws"></small><p id="wl"></p></div>' +
+      '<div class="c"><button id="wb" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M7 6v12h2V6zM19 6 9.5 12l9.5 6z"/></svg></button>' +
+      '<button id="wp" aria-label="Play"><svg viewBox="0 0 24 24"><path id="wi" d="M8 5v14l11-7z"/></svg></button>' +
+      '<button id="wn" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M15 6v12h2V6zM5 6l9.5 6L5 18z"/></svg></button></div></div>' +
+      '<div class="bar" id="wbar"><i id="wf"></i></div>';
+    const q = (id) => d.getElementById(id);
+    q('wb').onclick = () => step(-1); q('wn').onclick = () => step(1); q('wp').onclick = togglePlay;
+    q('wbar').onclick = (e) => { const r = q('wbar').getBoundingClientRect(); seekTo(((e.clientX - r.left) / r.width) * dur()); state.lineIdx = -2; };
+    w.addEventListener('pagehide', () => { this.win = null; $('popBtn').classList.remove('ok'); });
+    $('popBtn').classList.add('ok');
+    this.update(0);
+  },
+  update(pct) {
+    const w = this.win; if (!w) return;
+    const d = w.document, q = (id) => d.getElementById(id), t = state.track, cs = getComputedStyle(root), rs = d.documentElement.style;
+    [['--a', '--glow-a'], ['--b', '--glow-b'], ['--bg', '--bg'], ['--pink', '--pink'], ['--cyan', '--cyan'], ['--violet', '--violet']].forEach(([k, v]) => rs.setProperty(k, cs.getPropertyValue(v).trim()));
+    q('wt').textContent = t ? t.title : 'Nothing playing'; q('ws').textContent = t ? t.artist : 'Pick a song in the main window';
+    const art = t && (t.art || t.artBig) || ''; if (q('wa').getAttribute('src') !== art) q('wa').setAttribute('src', art);
+    const pk = $('peek'); q('wl').textContent = pk.classList.contains('live') ? pk.textContent : '';
+    q('wi').setAttribute('d', isPlaying() ? 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z' : 'M8 5v14l11-7z');
+    q('wf').style.width = pct + '%';
+  },
+};
+if (widget.supported) { $('popBtn').hidden = false; $('popBtn').onclick = () => widget.toggle(); }
+
 /* ---------- ticker ---------- */
 setInterval(() => {
   const d = dur(), p = pos(), pct = d ? Math.min(100, (p / d) * 100) : 0;
@@ -441,6 +501,7 @@ setInterval(() => {
   $('miniProg').style.setProperty('--p', pct + '%');
   $('dur').textContent = fmt(d);
   syncLyrics();
+  widget.update(pct);
 }, 200);
 $('seek').addEventListener('input', () => {
   state.seeking = true;

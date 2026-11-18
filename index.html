@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 <div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="grid"></div></div>
@@ -22,6 +22,7 @@
 <header class="top">
   <span class="brand">MUSIC UI</span>
   <div class="top-right">
+    <button id="popBtn" class="link-btn" type="button" hidden>Widget</button>
     <button id="settingsBtn" class="link-btn" type="button">Primary: Apple Music</button>
     <button id="themeBtn" class="dots" type="button" aria-label="Change color theme"><i></i><i></i><i></i></button>
   </div>
@@ -125,6 +126,6 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="none" playsinline></audio>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
