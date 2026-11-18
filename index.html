@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=18">
+<link rel="stylesheet" href="style.css?v=19">
 </head>
 <body>
 <div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="grid"></div></div>
@@ -62,7 +62,8 @@
     <div class="art-wrap" id="artWrap">
       <div class="vinyl" aria-hidden="true"></div>
       <div class="art-glow" aria-hidden="true"></div>
-      <div class="art" id="art"><img id="artImg" alt="" hidden draggable="false"><span class="art-label">[ ALBUM ART ]</span><i class="shine"></i></div>
+      <div class="side prev" id="sidePrev" aria-hidden="true"></div><div class="side next" id="sideNext" aria-hidden="true"></div>
+      <div class="art" id="art"><img id="artImg" alt="" hidden draggable="false"><span class="art-label">[ ALBUM ART ]</span><i class="holo"></i><i class="shine"></i></div>
     </div>
     <div class="meta">
       <div class="meta-text"><h1><span id="title">Pick a track</span></h1><p class="sub" id="sub">Search for a song to start</p></div>
@@ -126,6 +127,7 @@
     <h3>Color theme</h3>
     <div class="swatches" id="swatches" role="group" aria-label="Color theme"></div>
     <label class="sw"><span>Match colors to the album art</span><input type="checkbox" id="artColors"></label>
+    <label class="sw" id="tiltRow" hidden><span>Tilt the cover in 3D when you move your phone</span><input type="checkbox" id="tilt"></label>
     <h3>Lyrics size</h3>
     <div class="seg three" id="lySeg" role="group" aria-label="Lyrics size">
       <button type="button" data-z="s">Small</button>
@@ -164,6 +166,6 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="none" playsinline></audio>
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

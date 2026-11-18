@@ -642,3 +642,36 @@ dialog { max-height: 88dvh; overflow-y: auto; }
   .app[data-view="player"] ~ .mini { transform: translateY(calc(100% + 110px)); }
   .player, .lyrics { box-shadow: none; }
 }
+
+/* ---------- v19: depth ---------- */
+/* background: a real floor in perspective, rolling toward you */
+.bg { perspective: 380px; perspective-origin: 50% 35%; }
+.grid { inset: auto -70% -12% -70%; height: 62%; transform: rotateX(72deg); transform-origin: 50% 0;
+  background:
+    linear-gradient(color-mix(in srgb, var(--pink) 55%, transparent) 1.5px, transparent 1.5px) 0 0 / 100% 46px,
+    linear-gradient(90deg, color-mix(in srgb, var(--cyan) 45%, transparent) 1.5px, transparent 1.5px) 50% 0 / 46px 100%;
+  -webkit-mask-image: linear-gradient(transparent 2%, #000 55%); mask-image: linear-gradient(transparent 2%, #000 55%);
+  animation: floor 3.2s linear infinite; opacity: .55; }
+.is-playing .grid { animation-duration: 1.5s; opacity: .8; }
+@keyframes floor { to { background-position: 0 46px, 50% 0; } }
+/* cover flow */
+.side { position: absolute; inset: 0; border-radius: 18px; background: #1a1028 center / cover; box-shadow: 0 14px 30px rgba(0, 0, 0, .55); filter: brightness(.55) saturate(1.1); opacity: 0; pointer-events: none; transition: transform .5s var(--ease), opacity .4s; }
+.flow .side { opacity: 1; }
+.side.prev { transform: translateX(calc(-56% * (1 - var(--dr, 0)))) translateZ(-140px) rotateY(calc(50deg * (1 - var(--dr, 0)))) scale(.84); }
+.side.next { transform: translateX(calc(56% * (1 + var(--dr, 0)))) translateZ(-140px) rotateY(calc(-50deg * (1 + var(--dr, 0)))) scale(.84); }
+.dragging .side { transition: none; }
+.flow .vinyl { display: none; }
+/* foil that shifts as the cover tilts */
+.holo { position: absolute; inset: 0; pointer-events: none; opacity: calc(var(--sh, 0) * .5); mix-blend-mode: color-dodge; transition: opacity .3s;
+  background: repeating-linear-gradient(115deg, transparent 0%, hsl(320 95% 62% / .5) 7%, hsl(190 95% 60% / .5) 14%, hsl(55 95% 62% / .45) 21%, transparent 28%) var(--sx, 50%) var(--sy, 50%) / 280% 280%; }
+.art.gyro { transition: box-shadow .6s, opacity .3s; }
+/* lyrics on a wheel: lines above lean back, lines below lean forward */
+.lines:not(.plain) { perspective: 620px; }
+.lines:not(.plain) .line { transform: rotateX(calc(var(--s, 0) * -8deg)) translateZ(calc(var(--d, 0) * -12px)); transform-origin: left center; }
+.lines:not(.plain) .line.cur { transform: scale(1.04); }
+.lines.browse .line { transform: none !important; }
+.b-big, .b-tile, .card, .pl { will-change: transform; }
+@media (max-width: 700px), (max-width: 880px) and (orientation: portrait) {
+  .player { overflow-x: hidden; }
+  .art-wrap { width: min(68vw, 35dvh); margin: 8px 0 10px; }
+}

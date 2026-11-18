@@ -444,6 +444,12 @@ function nextIndex() {
 }
 // "Up next" card under the controls (portrait phones): the next few songs.
 function renderNextUp() {
+  { // cover flow: the previous and next covers stand at an angle beside the current one
+    const m = state.queue.length, flow = !!state.track && m > 1;
+    const bg = (t) => t && (t.artBig || t.art) ? 'url("' + artAt(t, 300) + '")' : 'none';
+    $('artWrap').classList.toggle('flow', flow);
+    if (flow) { $('sideNext').style.backgroundImage = bg(state.queue[nextIndex()]); $('sidePrev').style.backgroundImage = bg(state.queue[(state.index - 1 + m) % m]); }
+  }
   const n = state.queue.length, items = [], random = state.shuffle && !state.forced;
   if (state.track && n > 1) {
     const first = nextIndex();
@@ -829,7 +835,8 @@ function syncLyrics() {
   state.lineIdx = idx;
   for (let i = 0; i < kids.length; i++) {
     kids[i].className = 'line' + (i < idx ? ' past' : i === idx ? ' cur' : i === idx + 1 ? ' next' : '');
-    kids[i].style.setProperty('--d', Math.min(6, Math.abs(i - Math.max(idx, 0)))); // lines further from the current one are softer
+    kids[i].style.setProperty('--d', Math.min(6, Math.abs(i - Math.max(idx, 0))));
+    kids[i].style.setProperty('--s', Math.max(-6, Math.min(6, i - Math.max(idx, 0)))); // which way the line leans on the wheel // lines further from the current one are softer
   }
   renderLyCard();
   const cur = kids[Math.max(idx, 0)];
@@ -977,12 +984,14 @@ $('seek').addEventListener('change', () => { seekTo((+$('seek').value / 1000) * 
     }
     if (g.axis === 'x') {
       art.style.setProperty('--tx', g.dx + 'px'); art.style.setProperty('--rot', g.dx / 18 + 'deg');
+      wrap.classList.add('dragging'); wrap.style.setProperty('--dr', Math.max(-1, Math.min(1, g.dx / wrap.clientWidth)));
       art.style.opacity = 1 - Math.min(0.6, Math.abs(g.dx) / 400);
     } else if (isPhone() && g.dy > 0) player.style.transform = `translateY(${g.dy}px)`;
   });
   const end = (cancelled) => {
     if (!g) return;
     const { axis, dx, dy } = g; g = null;
+    wrap.classList.remove('dragging'); wrap.style.removeProperty('--dr');
     art.classList.remove('live');
     if (!axis) { if (!cancelled) togglePlay(); return; }
     if (axis === 'x') {
@@ -1290,6 +1299,56 @@ $('tabbar').addEventListener('click', (e) => {
   if (state.album || state.query) { clearTimeout(typeTimer); $('q').value = ''; $('qClear').hidden = true; search(''); }
   $('tracks').scrollTo({ top: 0, behavior: 'smooth' });
 });
+// Tilt the cover in 3D by moving the phone (asks for motion access on iPhone).
+const gyro = {
+  on: false, base: null,
+  handler(e) {
+    if (e.beta == null || e.gamma == null || (isPhone() && app.dataset.view === 'library')) return;
+    const ang = (screen.orientation && screen.orientation.angle) || 0, side = Math.abs(ang) === 90 || ang === 270;
+    const gx = side ? e.beta * (ang === 90 ? 1 : -1) : e.gamma, gy = side ? -e.gamma * (ang === 90 ? 1 : -1) : e.beta;
+    const b = gyro.base || (gyro.base = { x: gx, y: gy });
+    b.x += (gx - b.x) * 0.02; b.y += (gy - b.y) * 0.02; // slowly settle on however the phone is being held
+    const cl = (v) => Math.max(-1, Math.min(1, v)), x = cl((gx - b.x) / 22), y = cl((gy - b.y) / 22), s = $('art').style;
+    s.setProperty('--ry', x * 17 + 'deg'); s.setProperty('--rx', -y * 17 + 'deg');
+    s.setProperty('--sx', 50 + x * 50 + '%'); s.setProperty('--sy', 50 + y * 50 + '%'); s.setProperty('--sh', 1);
+  },
+  async start(ask) {
+    if (this.on || !('DeviceOrientationEvent' in window)) return this.on;
+    try {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        if (!ask) return false;
+        if (await DeviceOrientationEvent.requestPermission() !== 'granted') return false;
+      }
+    } catch { return false; }
+    addEventListener('deviceorientation', this.handler); this.on = true; $('art').classList.add('gyro'); return true;
+  },
+  stop() {
+    removeEventListener('deviceorientation', this.handler); this.on = false; this.base = null;
+    const a = $('art'); a.classList.remove('gyro'); ['--rx', '--ry'].forEach((p) => a.style.removeProperty(p)); a.style.setProperty('--sh', 0);
+  },
+};
+$('tiltRow').hidden = !('DeviceOrientationEvent' in window) || finePointer;
+$('tilt').checked = store.get('tilt', false);
+$('tilt').onchange = async () => {
+  if ($('tilt').checked) { if (!(await gyro.start(true))) { $('tilt').checked = false; toast('Motion access was not allowed.'); } }
+  else gyro.stop();
+  store.set('tilt', $('tilt').checked);
+};
+if ($('tilt').checked && !$('tiltRow').hidden) gyro.start(false).then((ok) => { if (!ok) document.addEventListener('click', () => gyro.start(true), { once: true }); });
+// Tiles lean toward your finger or mouse.
+(function pressTilt() {
+  const SEL = '.b-big, .b-tile, .card, .pl', box = $('tracks'); let cur = null;
+  const lean = (e) => {
+    const t = e.target.closest(SEL);
+    if (cur && cur !== t) { cur.style.transform = ''; cur = null; }
+    if (!t || calm.matches || (e.pointerType !== 'mouse' && !e.buttons && e.type !== 'pointerdown')) return;
+    const r = t.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5, k = Math.min(16, 900 / r.width);
+    cur = t; t.style.transform = 'perspective(600px) rotateX(' + (-y * k).toFixed(1) + 'deg) rotateY(' + (x * k).toFixed(1) + 'deg) scale(' + (e.buttons ? 0.97 : 1.02) + ')';
+  };
+  const drop = () => { if (cur) { cur.style.transform = ''; cur = null; } };
+  box.addEventListener('pointerdown', lean); box.addEventListener('pointermove', lean);
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => box.addEventListener(ev, drop));
+})();
 $('like').onclick = () => { if (state.track) toggleLike(state.track); };
 function setVol(v) {
   $('vol').value = v; $('vol').style.setProperty('--p', v + '%');
