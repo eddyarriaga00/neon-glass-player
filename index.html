@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
 <div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="grid"></div></div>
@@ -52,6 +52,7 @@
   </section>
 
   <section class="panel player" id="player" aria-label="Now playing">
+    <div class="backdrop" id="backdrop" aria-hidden="true"></div>
     <canvas id="viz" aria-hidden="true"></canvas>
     <div class="sheet-head" id="playerHead">
       <button id="closePlayer" type="button" aria-label="Close player"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
@@ -67,6 +68,7 @@
       <button id="like" type="button" aria-label="Like" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.600-7 10-7 10z"/></svg></button>
     </div>
     <div class="progress">
+      <canvas id="wave" aria-hidden="true"></canvas>
       <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek">
       <div class="times"><span id="cur">0:00</span><span id="mode" class="mode"></span><span id="dur">0:00</span></div>
     </div>
@@ -103,7 +105,15 @@
 
 <dialog id="settings">
   <form method="dialog" class="dlg">
-    <h2>Services</h2>
+    <h2>Settings</h2>
+    <h3>Color theme</h3>
+    <div class="swatches" id="swatches" role="group" aria-label="Color theme"></div>
+    <h3>Lyrics size</h3>
+    <div class="seg three" id="lySeg" role="group" aria-label="Lyrics size">
+      <button type="button" data-z="s">Small</button>
+      <button type="button" data-z="m">Medium</button>
+      <button type="button" data-z="l">Large</button>
+    </div>
     <h3>Primary service</h3>
     <div class="seg" id="primarySeg" role="group" aria-label="Primary service">
       <button type="button" data-p="apple" aria-pressed="true">Apple Music</button>
@@ -129,6 +139,6 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="none" playsinline></audio>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

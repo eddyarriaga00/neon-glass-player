@@ -158,6 +158,19 @@ function renderList() {
     });
     hero.append(sc); rows.unshift(hero);
   }
+  const hist = chart ? store.get('hist', []).filter((t) => t && SRC_LABEL[t.src]) : [];
+  if (hist.length >= 3) { // recently played, above the chart
+    const li = el('li', 'hero back'), sc = el('div', 'hero-row');
+    hist.forEach((t, i) => {
+      const c = el('button', 'card'); c.type = 'button';
+      const im = el('img'); im.src = artAt(t, 200); im.alt = ''; im.draggable = false;
+      const cap = el('span'); cap.append(el('b', null, t.title));
+      c.append(im, cap); c.onclick = () => { state.queue = hist; state.forced = 0; playIndex(i); setView('player'); }; sc.append(c);
+    });
+    li.append(sc);
+    rows.unshift(li, el('li', 'list-title sub', $('listTitle').textContent));
+    $('listTitle').textContent = 'JUMP BACK IN';
+  }
   ul.replaceChildren(...rows);
   ul.scrollTop = 0;
 }
@@ -202,6 +215,7 @@ function toggleLike(t) {
   store.set('likes', state.likes);
   if (state.track && state.track.id === t.id) $('like').setAttribute('aria-pressed', String(on));
   document.querySelectorAll('.row-like').forEach((h) => { if (h.dataset.id === t.id) h.setAttribute('aria-pressed', String(on)); });
+  if (on && state.track && state.track.id === t.id) { const h = el('span', 'burst'); h.innerHTML = HEART; $('art').append(h); setTimeout(() => h.remove(), 900); }
   toast(on ? 'Added to Liked' : 'Removed from Liked');
   if (state.src === 'liked') renderList();
 }
@@ -273,6 +287,7 @@ async function playIndex(i) {
   const seq = ++state.playSeq;
   state.index = i; state.track = t; state.offset = t.full ? 0 : null; state.lineIdx = -2;
   store.set('last', { queue: state.queue.slice(0, 60), index: i });
+  store.set('hist', [t, ...store.get('hist', []).filter((x) => x.id !== t.id)].slice(0, 12));
   showTrack(t); loadLyrics(t, seq); renderQueue();
   document.querySelectorAll('.track').forEach((b) => b.classList.toggle('on', b.dataset.id === t.id));
 
@@ -349,6 +364,9 @@ function showTrack(t) {
   const img = $('artImg');
   if (t.artBig) { img.classList.remove('swap'); void img.offsetWidth; img.src = t.artBig; img.hidden = false; img.classList.add('swap'); tint(t.art || t.artBig); } else img.hidden = true;
   document.title = t.title + ' · ' + t.artist;
+  $('backdrop').style.backgroundImage = t.artBig || t.art ? 'url("' + artAt(t, 300) + '")' : '';
+  const mt = document.querySelector('.meta-text'); mt.classList.remove('in'); void mt.offsetWidth; mt.classList.add('in');
+  wave.seed(t);
   $('like').setAttribute('aria-pressed', String(state.likes.some((x) => x.id === t.id)));
   const q = encodeURIComponent(t.title + ' ' + t.artist);
   const links = [
@@ -356,7 +374,15 @@ function showTrack(t) {
     ['Spotify', t.src === 'spotify' ? t.link : 'https://open.spotify.com/search/' + q],
   ];
   if (state.primary === 'spotify') links.reverse();
-  $('openIn').replaceChildren(...links.map(([n, h]) => { const a = el('a', null, 'Open in ' + n); a.href = h; a.target = '_blank'; a.rel = 'noopener'; return a; }));
+  const share = el('button', null, navigator.share ? 'Share' : 'Copy link'); share.type = 'button';
+  share.onclick = async () => {
+    const url = links[0][1];
+    try {
+      if (navigator.share) await navigator.share({ title: t.title, text: t.title + ' · ' + t.artist, url });
+      else { await navigator.clipboard.writeText(url); toast('Link copied.'); }
+    } catch {}
+  };
+  $('openIn').replaceChildren(...links.map(([n, h]) => { const a = el('a', null, 'Open in ' + n); a.href = h; a.target = '_blank'; a.rel = 'noopener'; return a; }), share);
   if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({ title: t.title, artist: t.artist, album: t.album, artwork: artSizes(t) });
   }
@@ -403,12 +429,14 @@ function tint(url) {
 }
 
 /* ---------- themes ---------- */
-const THEMES = ['neon', 'sunset', 'ocean', 'mono'];
+const THEME_SW = { neon: ['#ff2fd0', '#29d8ff'], sunset: ['#ff5e3a', '#ffc531'], ocean: ['#2af5c1', '#1f8fff'], forest: ['#7dff6a', '#19b36b'], rose: ['#ff7aa8', '#ffd1b8'], mono: ['#ffffff', '#6c6c75'] };
+const THEMES = Object.keys(THEME_SW);
 function setTheme(name, announce) {
   root.dataset.theme = name; store.set('theme', name);
   root.style.removeProperty('--glow-a'); root.style.removeProperty('--glow-b');
   if (state.track) tint(state.track.art || state.track.artBig);
-  viz.readColors();
+  viz.readColors(); wave.draw(wave.pct);
+  document.querySelectorAll('#swatches button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.t === name)));
   const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = getComputedStyle(root).getPropertyValue('--bg').trim();
   if (announce) toast('Theme: ' + name[0].toUpperCase() + name.slice(1));
 }
@@ -590,6 +618,36 @@ const widget = {
 };
 if (widget.supported) { $('popBtn').hidden = false; $('popBtn').onclick = () => widget.toggle(); }
 
+/* ---------- waveform scrubber (shape is made up per song, it is decoration) ---------- */
+const wave = {
+  c: $('wave'), bars: new Array(64).fill(0.3), pct: 0,
+  seed(t) {
+    let h = 2166136261;
+    for (const ch of t.id) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+    const rnd = () => { h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0; h = Math.imul(h ^ (h >>> 13), 3266489909) >>> 0; h = (h ^ (h >>> 16)) >>> 0; return h / 4294967296; };
+    let v = 0.5;
+    this.bars = this.bars.map((_, i, a) => {
+      v = Math.max(0.2, Math.min(1, v + (rnd() - 0.5) * 0.7));
+      return v * Math.min(1, Math.min(i, a.length - 1 - i) / 5 + 0.45);
+    });
+    this.draw(this.pct);
+  },
+  draw(pct) {
+    this.pct = pct;
+    const c = this.c, dpr = Math.min(2, devicePixelRatio || 1), w = Math.round(c.clientWidth * dpr), h = Math.round(c.clientHeight * dpr);
+    if (!w || !h) return;
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    const x = c.getContext('2d'), n = this.bars.length, bw = w / n;
+    x.clearRect(0, 0, w, h);
+    const g = x.createLinearGradient(0, 0, w, 0); g.addColorStop(0, viz.colors[0]); g.addColorStop(1, viz.colors[1]);
+    for (let i = 0; i < n; i++) {
+      const bh = Math.max(2 * dpr, this.bars[i] * h * 0.9);
+      x.fillStyle = ((i + 0.5) / n) * 100 <= pct ? g : 'rgba(255,255,255,.2)';
+      x.beginPath(); x.roundRect(i * bw + bw * 0.22, (h - bh) / 2, bw * 0.56, bh, bw * 0.28); x.fill();
+    }
+  },
+};
+
 /* ---------- ticker ---------- */
 setInterval(() => {
   const d = dur(), p = pos(), pct = d ? Math.min(100, (p / d) * 100) : 0;
@@ -600,11 +658,12 @@ setInterval(() => {
   $('miniProg').style.setProperty('--p', pct + '%');
   $('dur').textContent = fmt(d);
   syncLyrics();
+  wave.draw(state.seeking ? +$('seek').value / 10 : pct);
   widget.update(pct);
 }, 200);
 $('seek').addEventListener('input', () => {
   state.seeking = true;
-  const v = +$('seek').value; $('seek').style.setProperty('--p', v / 10 + '%');
+  const v = +$('seek').value; $('seek').style.setProperty('--p', v / 10 + '%'); wave.draw(v / 10);
   $('cur').textContent = fmt((v / 1000) * dur());
 });
 $('seek').addEventListener('change', () => { seekTo((+$('seek').value / 1000) * dur()); state.seeking = false; state.lineIdx = -2; });
@@ -843,6 +902,25 @@ $('chips').addEventListener('click', (e) => {
   $('chips').querySelectorAll('.chip').forEach((x) => x.classList.toggle('on', x === c));
   renderList();
 });
+$('swatches').replaceChildren(...THEMES.map((n) => {
+  const b = el('button'); b.type = 'button'; b.dataset.t = n; b.title = n[0].toUpperCase() + n.slice(1); b.setAttribute('aria-label', n + ' theme');
+  b.style.background = 'linear-gradient(135deg, ' + THEME_SW[n][0] + ', ' + THEME_SW[n][1] + ')';
+  b.onclick = () => setTheme(n, false); return b;
+}));
+const LZ = { s: 0.86, m: 1, l: 1.2 };
+function setLz(z) {
+  if (!LZ[z]) z = 'm';
+  store.set('lz', z); root.style.setProperty('--lz', LZ[z]); state.lineIdx = -2;
+  document.querySelectorAll('#lySeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.z === z)));
+}
+$('lySeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setLz(b.dataset.z); });
+// Tap the artist line to see more from that artist.
+$('sub').onclick = () => {
+  if (!state.track) return;
+  const a = state.track.artist.split(/,| & /)[0].trim();
+  if (state.src !== 'all') $('chips').querySelector('[data-src="all"]').click();
+  $('q').value = a; $('qClear').hidden = false; search(a); setView('library');
+};
 $('play').onclick = togglePlay;
 $('prev').onclick = () => step(-1);
 $('next').onclick = () => step(1);
@@ -893,6 +971,7 @@ $('note').addEventListener('input', () => store.set('note', $('note').value));
 (async function init() {
   setTheme(THEMES.includes(store.get('theme')) ? store.get('theme') : 'neon', false);
   setVol(store.get('vol', 80));
+  setLz(store.get('lz', 'm'));
   viz.draw(0);
   await sp.handleRedirect();
   refreshSpUI();
