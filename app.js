@@ -65,6 +65,7 @@ let skipPop = 0;
 function setView(v, fromPop) {
   const cur = app.dataset.view; if (v === cur) return;
   app.dataset.view = v;
+  document.body.classList.toggle('sheet', v !== 'library');
   if (v === 'player' && cur === 'library') $('player').scrollTop = 0;
   if (fromPop || !isPhone()) return;
   const d = DEPTH[v] - DEPTH[cur];
@@ -710,7 +711,7 @@ $('themeBtn').onclick = () => vt(() => setTheme(THEMES[(THEMES.indexOf(root.data
 /* ---------- visualizer ---------- */
 const viz = {
   c: $('viz'), n: 40, v: new Float32Array(40), analyser: null, data: null, blocked: false, colors: ['#ff2fd0', '#29d8ff'],
-  readColors() { const s = getComputedStyle(root); this.colors = [s.getPropertyValue('--pink').trim(), s.getPropertyValue('--cyan').trim()]; },
+  readColors() { const s = getComputedStyle(root); this.colors = [s.getPropertyValue('--pink').trim(), s.getPropertyValue('--cyan').trim()]; stage.readColors(s); },
   // Real frequency data on desktop. Phones keep plain <audio> so music keeps playing with the screen locked.
   connect() {
     if (this.analyser || this.blocked || !finePointer || !audio.crossOrigin) return;
@@ -933,6 +934,130 @@ const wave = {
     }
   },
 };
+
+
+/* ---------- living background: a small shader scene drawn on the graphics chip, colored by the theme or the album art ---------- */
+const stage = {
+  c: $('stage'), gl: null, scene: store.get('scene', 1), t: 0, last: 0, e: 0, frame: 0, u: {},
+  NAMES: ['Off', 'Sunset', 'Aurora', 'Tunnel'],
+  col: [[1, 0.18, 0.82], [0.16, 0.85, 1], [0.48, 0.24, 1]], tgt: [[1, 0.18, 0.82], [0.16, 0.85, 1], [0.48, 0.24, 1]],
+  FRAG: `precision highp float;
+uniform vec2 r; uniform float t, e, sc; uniform vec3 a, b, c;
+const vec3 NIGHT = vec3(.02, .01, .05);
+float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float n(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
+  return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
+float fbm(vec2 p) { float v = 0., s = .5; for (int i = 0; i < 4; i++) { v += s * n(p); p = p * 2.03 + vec2(1.7, 9.2); s *= .5; } return v; }
+vec3 sunset(vec2 uv) {
+  float hz = -.08; vec3 col;
+  if (uv.y > hz) {
+    float y = uv.y - hz;
+    col = mix(c * .5, NIGHT, smoothstep(0., 1., y));
+    vec2 g = floor(uv * 42.); float st = step(.985, h(g));
+    col += st * (.4 + .6 * sin(t * 2. + h(g + 1.) * 6.28)) * smoothstep(.15, .7, y) * .7;
+    vec2 sp = uv - vec2(0., hz + .44);
+    float d = length(sp), R = .34 + e * .025;
+    float sun = smoothstep(R, R - .012, d);
+    float gap = clamp((.15 - sp.y / R) * .5, 0., .7);
+    float bars = smoothstep(gap - .04, gap + .04, fract(sp.y * 9. - t * .25));
+    col = mix(col, mix(a, b, clamp(sp.y / R * .5 + .5, 0., 1.)), sun * bars);
+    col += mix(a, b, .3) * .3 * exp(-3.5 * max(d - R, 0.)) * (1. + e);
+  } else {
+    float y = hz - uv.y, z = .25 / (y + .02);
+    vec2 gp = vec2(uv.x * z * 2., z * 2. - t * 1.6), gl = abs(fract(gp) - .5);
+    float w = min(.3, .035 + z * .012);
+    float line = smoothstep(.5 - w, .5, max(gl.x, gl.y));
+    col = NIGHT + mix(a, c, .3) * line * exp(-z * .13) * (.8 + e * .7);
+    col += a * .35 * exp(-y * 9.) * (1. + e * .5);
+  }
+  return col;
+}
+vec3 aurora(vec2 uv) {
+  vec2 p = uv * 1.2; float tt = t * .12;
+  vec2 q = vec2(fbm(p + tt), fbm(p + vec2(5.2, 1.3) - tt));
+  float f = fbm(p + 2.5 * q + vec2(0., tt * 2.));
+  vec3 col = mix(NIGHT, c, smoothstep(.2, .8, f) * .7);
+  col = mix(col, a, smoothstep(.45, .95, q.x * f * 2.) * .8);
+  col = mix(col, b, smoothstep(.5, 1., q.y * f * 2.2) * .7);
+  float rb = abs(sin((uv.y + f * 1.2) * 6. + t * .4));
+  col += b * pow(1. - rb, 8.) * .35 * (1. + e * 1.5);
+  return col * (.75 + e * .35);
+}
+vec3 tunnel(vec2 uv) {
+  float d = length(uv) + .001, an = atan(uv.y, uv.x), z = .6 / d + t * .8;
+  float tw = an / 6.2832 * 12. + sin(z * .5);
+  float rings = smoothstep(.4, .5, abs(fract(z * 1.5) - .5)), spokes = smoothstep(.44, .5, abs(fract(tw) - .5));
+  vec3 col = (mix(a, b, .5 + .5 * sin(z * .7)) * rings + c * spokes * .6) * smoothstep(.02, .5, d) * (.7 + e * .8);
+  col += mix(b, a, .5) * .3 * exp(-d * 5.) * (1. + e * 2.);
+  return col + NIGHT;
+}
+void main() {
+  vec2 uv = (gl_FragCoord.xy * 2. - r) / r.y;
+  vec3 col = sc < .5 ? sunset(uv) : sc < 1.5 ? aurora(uv) : tunnel(uv);
+  col *= 1. - .22 * dot(uv * .5, uv * .5);
+  gl_FragColor = vec4(col, 1.);
+}`,
+  init() {
+    try {
+      const gl = this.c.getContext('webgl', { antialias: false, alpha: false, powerPreference: 'low-power' });
+      if (!gl) return;
+      const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+      const p = gl.createProgram();
+      gl.attachShader(p, sh(gl.VERTEX_SHADER, 'attribute vec2 p; void main() { gl_Position = vec4(p, 0., 1.); }'));
+      gl.attachShader(p, sh(gl.FRAGMENT_SHADER, this.FRAG));
+      gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('link');
+      gl.useProgram(p);
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      const loc = gl.getAttribLocation(p, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      ['r', 't', 'e', 'sc', 'a', 'b', 'c'].forEach((k) => { this.u[k] = gl.getUniformLocation(p, k); });
+      this.gl = gl;
+      this.c.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.gl = null; this.apply(); });
+    } catch (err) { this.gl = null; }
+  },
+  px: document.createElement('canvas').getContext('2d', { willReadFrequently: true }),
+  readColors(cs) {
+    ['--pink', '--cyan', '--violet'].forEach((k, i) => {
+      try {
+        this.px.clearRect(0, 0, 1, 1); this.px.fillStyle = '#000'; this.px.fillStyle = cs.getPropertyValue(k).trim(); this.px.fillRect(0, 0, 1, 1);
+        const d = this.px.getImageData(0, 0, 1, 1).data; this.tgt[i] = [d[0] / 255, d[1] / 255, d[2] / 255];
+      } catch {}
+    });
+  },
+  apply() {
+    const on = !!this.gl && this.scene > 0;
+    document.body.classList.toggle('has-stage', on);
+    document.querySelectorAll('#sceneSeg button').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.n === this.scene)));
+  },
+  set(n, announce) {
+    this.scene = this.gl ? n : 0; store.set('scene', n); this.apply();
+    if (announce) toast(this.gl ? 'Background: ' + this.NAMES[n] : 'This device cannot draw the animated backgrounds.');
+  },
+  draw(ts) {
+    requestAnimationFrame((x) => this.draw(x));
+    const gl = this.gl;
+    if (!gl || !this.scene || document.hidden) return;
+    if (!finePointer && (this.frame++ & 1)) return; // every other frame on phones, to go easy on the battery
+    const dt = Math.min(0.1, (ts - this.last) / 1000 || 0); this.last = ts;
+    const playing = isPlaying();
+    this.t += dt * (playing ? 1 : 0.25);
+    let target = 0;
+    if (playing) {
+      if (viz.analyser && state.backend === 'audio') { let s = 0; for (let i = 1; i < 9; i++) s += viz.data[i]; target = Math.min(1, s / 8 / 210); }
+      else target = Math.pow(0.5 + 0.5 * Math.sin(ts / 1000 * Math.PI * 4), 6) * 0.9; // steady pulse where the real sound cannot be read
+    }
+    this.e += (target - this.e) * 0.25;
+    for (let i = 0; i < 3; i++) for (let k = 0; k < 3; k++) this.col[i][k] += (this.tgt[i][k] - this.col[i][k]) * 0.05;
+    const sc = Math.min(2, devicePixelRatio || 1) * (finePointer ? 0.75 : 0.5), w = Math.round(innerWidth * sc), h = Math.round(innerHeight * sc);
+    if (this.c.width !== w || this.c.height !== h) { this.c.width = w; this.c.height = h; gl.viewport(0, 0, w, h); }
+    gl.uniform2f(this.u.r, w, h); gl.uniform1f(this.u.t, this.t % 3600); gl.uniform1f(this.u.e, this.e); gl.uniform1f(this.u.sc, this.scene - 1);
+    gl.uniform3fv(this.u.a, this.col[0]); gl.uniform3fv(this.u.b, this.col[1]); gl.uniform3fv(this.u.c, this.col[2]);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  },
+};
+stage.init();
+$('sceneSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) stage.set(+b.dataset.n, false); });
+$('sceneBtn').onclick = () => { buzz(); stage.set((stage.scene + 1) % stage.NAMES.length, true); };
 
 /* ---------- ticker ---------- */
 setInterval(() => {
@@ -1371,6 +1496,8 @@ $('note').addEventListener('input', () => store.set('note', $('note').value));
   setVol(store.get('vol', 80));
   setLz(store.get('lz', 'm'));
   viz.draw(0);
+  if (!stage.gl) stage.scene = 0;
+  stage.apply(); stage.draw(0);
   await sp.handleRedirect();
   refreshSpUI();
   sp.initPlayer();
