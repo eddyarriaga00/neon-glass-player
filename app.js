@@ -8,7 +8,7 @@ const store = {
 const audio = $('audio');
 const app = document.querySelector('.app');
 const root = document.documentElement;
-const isPhone = () => matchMedia('(max-width: 880px), (max-height: 520px) and (orientation: landscape)').matches;
+const isPhone = () => matchMedia('(max-width: 700px), (max-width: 880px) and (orientation: portrait)').matches;
 const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
 
 const state = {
@@ -65,6 +65,7 @@ let skipPop = 0;
 function setView(v, fromPop) {
   const cur = app.dataset.view; if (v === cur) return;
   app.dataset.view = v;
+  if (v === 'player' && cur === 'library') $('player').scrollTop = 0;
   if (fromPop || !isPhone()) return;
   const d = DEPTH[v] - DEPTH[cur];
   if (d > 0) for (let i = 0; i < d; i++) history.pushState({ ngp: 1 }, '');
@@ -316,11 +317,27 @@ function nextIndex() {
   }
   return state.shufNext;
 }
+// "Up next" card under the controls (portrait phones): the next few songs.
 function renderNextUp() {
-  const b = $('nextUp'), t = state.track ? state.queue[nextIndex()] : null;
-  const show = !!t && t.id !== state.track.id;
-  b.hidden = !show; if (!show) return;
-  b.querySelector('img').src = t.art || ''; b.querySelector('b').textContent = t.title + ' \u00b7 ' + t.artist;
+  const n = state.queue.length, items = [], random = state.shuffle && !state.forced;
+  if (state.track && n > 1) {
+    const first = nextIndex();
+    for (let k = 1; k <= (random ? 1 : 3) && k < n; k++) {
+      const i = random ? first : (state.index + k) % n;
+      items.push(trackRow(state.queue[i], { onPlay: () => { state.forced = Math.max(0, state.forced - k); playIndex(i); $('player').scrollTo({ top: 0, behavior: 'smooth' }); } }));
+    }
+  }
+  $('upCard').hidden = !items.length; $('upList').replaceChildren(...items);
+  $('upNote').textContent = random ? 'Shuffle on' : '';
+}
+// Lyrics card under the controls (portrait phones): the line being sung and the two after it.
+function renderLyCard() {
+  const ly = state.lyrics; let rows;
+  if (!ly) rows = [[$('lines').textContent.trim() || 'Lyrics show up here when a song plays.', 'dim']];
+  else if (ly.plain) rows = ly.plain.filter(Boolean).slice(0, 3).map((s) => [s, 'dim']);
+  else if (state.offset === null) rows = [['Tap here and pick the line you hear. The lyrics follow along from there.', 'dim']];
+  else { const i = Math.max(state.lineIdx, 0); rows = ly.synced.slice(i, i + 3).map((l, k) => [l.text, k === 0 && state.lineIdx >= 0 ? 'cur' : 'dim']); }
+  $('lyMini').replaceChildren(...rows.map(([s, c]) => el('p', c, s)));
 }
 function renderQueue() {
   renderNextUp();
@@ -669,6 +686,7 @@ function updateHint() {
     needSync ? 'Tap the line you hear to sync' : 'Synced · tap a line to re-sync';
   const peek = $('peek'); peek.classList.remove('live');
   peek.textContent = !ly ? 'Lyrics' : needSync ? 'Lyrics · tap to sync with the preview ›' : 'Show lyrics ›';
+  renderLyCard();
 }
 function syncLyrics() {
   const ly = state.lyrics;
@@ -688,6 +706,7 @@ function syncLyrics() {
     kids[i].className = 'line' + (i < idx ? ' past' : i === idx ? ' cur' : i === idx + 1 ? ' next' : '');
     kids[i].style.setProperty('--d', Math.min(6, Math.abs(i - Math.max(idx, 0)))); // lines further from the current one are softer
   }
+  renderLyCard();
   const cur = kids[Math.max(idx, 0)];
   if (!cur || state.lyHold) return;
   const from = box.scrollTop, to = Math.max(0, Math.min(box.scrollHeight - box.clientHeight, cur.offsetTop - box.clientHeight / 2 + cur.clientHeight / 2)), dy = to - from;
@@ -1067,8 +1086,8 @@ $('miniPlay').onclick = togglePlay;
 $('miniNext').onclick = () => step(1);
 $('miniOpen').onclick = () => setView('player');
 $('closePlayer').onclick = () => setView('library');
-$('openLyrics').onclick = $('peek').onclick = () => { setTab('lyrics'); setView('lyrics'); };
-$('openQueue').onclick = $('nextUp').onclick = () => { setTab('queue'); setView('lyrics'); };
+$('openLyrics').onclick = $('peek').onclick = $('lyCard').onclick = () => { setTab('lyrics'); setView('lyrics'); };
+$('openQueue').onclick = $('upAll').onclick = () => { setTab('queue'); setView('lyrics'); };
 // Mini player: swipe sideways to skip, swipe up to open.
 (function miniGestures() {
   const m = $('mini'); let g = null, swiped = false;

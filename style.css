@@ -231,7 +231,7 @@ dialog::backdrop { background: rgba(5, 2, 12, .7); backdrop-filter: blur(4px); }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 /* ---------- phone ---------- */
-@media (max-width: 880px), (max-height: 520px) and (orientation: landscape) {
+@media (max-width: 700px), (max-width: 880px) and (orientation: portrait) {
   #popBtn { display: none; }
   .top { padding: 6px 14px 2px; }
   .app { display: block; padding: 4px 10px 0; }
@@ -307,21 +307,7 @@ dialog::backdrop { background: rgba(5, 2, 12, .7); backdrop-filter: blur(4px); }
   .peek { display: none; }
   .art-wrap { width: min(66vw, 34dvh); }
 }
-/* phone held sideways: art on the left, controls on the right */
-@media (max-height: 520px) and (orientation: landscape) {
-  .player { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr auto auto auto 1fr; column-gap: 32px; align-items: center; justify-items: stretch; padding-left: max(24px, env(safe-area-inset-left)); padding-right: max(24px, env(safe-area-inset-right)); }
-  .sheet-head { grid-column: 1 / -1; min-height: 36px; }
-  .art-wrap { grid-column: 1; grid-row: 2 / -1; width: min(62dvh, 34vw); align-self: center; }
-  .meta { grid-column: 2; grid-row: 3; }
-  .progress { grid-column: 2; grid-row: 4; }
-  .controls { grid-column: 2; grid-row: 5; margin-top: 6px; }
-  .peek, .open-in { display: none; }
-  #viz { grid-column: 1 / -1; }
-  .is-playing .vinyl { transform: translateX(22%); }
-  .tracks { display: grid; grid-template-columns: 1fr 1fr; align-content: start; }
-  .lyrics { padding-left: max(24px, env(safe-area-inset-left)); padding-right: max(24px, env(safe-area-inset-right)); }
-  .lines { padding: 12% 0 30%; }
-}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition-duration: .01s !important; scroll-behavior: auto !important; }
 }
@@ -378,7 +364,7 @@ dialog::backdrop { background: rgba(5, 2, 12, .7); backdrop-filter: blur(4px); }
 .tabs button[aria-pressed="true"] { color: var(--ink); background: rgba(255, 255, 255, .09); }
 .queue .msg { padding: 4px 2px 6px; font-size: 11.5px; color: var(--faint); letter-spacing: 0; }
 .pills { display: flex; gap: 6px; }
-@media (max-width: 880px), (max-height: 520px) and (orientation: landscape) {
+@media (max-width: 700px), (max-width: 880px) and (orientation: portrait) {
   .card { width: 116px; }
   .skel i { width: 40px; height: 40px; }
   .row-like { width: 38px; height: 38px; margin-top: -19px; }
@@ -392,10 +378,7 @@ dialog::backdrop { background: rgba(5, 2, 12, .7); backdrop-filter: blur(4px); }
 }
 @keyframes nudge-l { from { opacity: 0; transform: translateX(40px); } }
 @keyframes nudge-r { from { opacity: 0; transform: translateX(-40px); } }
-@media (max-height: 520px) and (orientation: landscape) {
-  .hero { grid-column: 1 / -1; }
-  .queue { display: grid; }
-}
+
 
 /* blurred artwork behind Now Playing */
 .backdrop { position: absolute; inset: -30px; background: center / cover no-repeat; filter: blur(36px) saturate(1.5); opacity: .36; pointer-events: none; transition: background-image .6s; -webkit-mask-image: linear-gradient(#000 35%, transparent 92%); mask-image: linear-gradient(#000 35%, transparent 92%); }
@@ -429,11 +412,11 @@ dialog { max-height: 88dvh; overflow-y: auto; }
 .swatches { display: flex; gap: 10px; flex-wrap: wrap; }
 .swatches button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; box-shadow: 0 0 0 1px var(--line); transition: transform .2s var(--ease), border-color .2s; }
 .swatches button[aria-pressed="true"] { border-color: #fff; transform: scale(1.12); }
-@media (max-width: 880px), (max-height: 520px) and (orientation: landscape) {
+@media (max-width: 700px), (max-width: 880px) and (orientation: portrait) {
   .backdrop { opacity: .5; }
   .hero.back .card { width: 84px; }
 }
-@media (max-height: 520px) and (orientation: landscape) { .list-title.sub { grid-column: 1 / -1; } }
+
 
 /* ---------- v12 ---------- */
 /* light sweeping across the lyric line being sung */
@@ -474,7 +457,7 @@ dialog { max-height: 88dvh; overflow-y: auto; }
 .sw { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--dim); cursor: pointer; }
 .dlg .sw input { width: 20px; height: 20px; padding: 0; flex: none; accent-color: var(--pink); }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .35s; }
-@media (max-width: 880px), (max-height: 520px) and (orientation: landscape) {
+@media (max-width: 700px), (max-width: 880px) and (orientation: portrait) {
   h1 { display: block; white-space: nowrap; }
   h1 span { display: inline-block; }
   h1.marq { -webkit-mask-image: linear-gradient(90deg, #000 86%, transparent); mask-image: linear-gradient(90deg, #000 86%, transparent); }
@@ -494,10 +477,7 @@ dialog { max-height: 88dvh; overflow-y: auto; }
 }
 @keyframes mq { 0%, 18% { transform: none; } 82%, 100% { transform: translateX(var(--mq, 0)); } }
 @media (max-width: 880px) and (max-height: 760px) { .nextup { display: none; } }
-@media (max-height: 520px) and (orientation: landscape) {
-  .nextup { display: none; }
-  .album-head, .list-acts { grid-column: 1 / -1; }
-}
+
 
 /* ---------- v13 ---------- */
 /* flowing artwork background: three slowly turning copies of the cover, drawn small then scaled up so the blur stays cheap */
@@ -527,7 +507,7 @@ dialog { max-height: 88dvh; overflow-y: auto; }
 .line.cur[data-gap] i:nth-child(2) { animation-delay: .2s; }
 .line.cur[data-gap] i:nth-child(3) { animation-delay: .4s; }
 @keyframes breathe { 50% { opacity: 1; transform: scale(1.5); } }
-@media (max-width: 880px), (max-height: 520px) and (orientation: landscape) {
+@media (max-width: 700px), (max-width: 880px) and (orientation: portrait) {
   #viz { display: none; }
   .backdrop { opacity: .62; }
   .lyrics .backdrop { opacity: .5; }
@@ -541,4 +521,54 @@ dialog { max-height: 88dvh; overflow-y: auto; }
   .line { font-size: calc(23px * var(--lz, 1)); font-weight: 700; line-height: 1.22; padding: 9px 0; letter-spacing: -.01em; }
   .line.cur { transform: scale(1.03); }
   .lines { padding-left: 2px; padding-right: 12px; }
+}
+
+/* ---------- v14 ---------- */
+.pcard, .nextup { display: none; }
+/* phone held sideways: the three panels, tightened to fit a short screen */
+@media (orientation: landscape) and (max-height: 520px) and (min-width: 701px) {
+  .top { padding: 4px 12px 0; }
+  .brand { font-size: 9px; }
+  .link-btn { padding: 3px 9px; }
+  .dots { padding: 6px; }
+  .app { gap: 8px; padding: 4px 8px 8px; grid-template-columns: minmax(200px, 1fr) minmax(250px, 1.2fr) minmax(200px, 1fr); }
+  .panel { padding: 10px; border-radius: 15px; }
+  .sticky, .vol, .open-in { display: none; }
+  .search { height: 34px; }
+  .chips { margin-top: 7px; }
+  .list-title { margin: 8px 2px 4px; }
+  .card { width: 84px; }
+  .hero.back .card { width: 62px; }
+  .art-wrap { width: min(46%, 36vh); }
+  .meta { margin-top: 10px; }
+  h1 { font-size: 16px; -webkit-line-clamp: 1; }
+  .progress { margin-top: 6px; }
+  .controls { margin-top: 4px; gap: 10px; }
+  .controls .play { width: 46px; height: 46px; }
+  .controls button:not(.play) { width: 36px; height: 36px; }
+  .line { font-size: calc(14.5px * var(--lz, 1)); padding: 5px 0; }
+  #viz { opacity: .2; }
+}
+/* portrait phone: Now Playing is a page of stacked glass panels you scroll through */
+@media (max-width: 700px), (max-width: 880px) and (orientation: portrait) {
+  .player { justify-content: flex-start; gap: 16px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+  .player::-webkit-scrollbar { display: none; }
+  .player > * { flex: none; }
+  .player .backdrop { position: absolute; height: 100dvh; inset: 0 0 auto 0; }
+  .art-wrap { width: min(78vw, 36dvh); margin: 4px 0 6px; }
+  .peek { display: none; }
+  .pcard { display: block; width: 100%; text-align: left; padding: 13px 14px 14px; border-radius: 18px; background: rgba(255, 255, 255, .07); border: 1px solid var(--line); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 14px 30px rgba(0, 0, 0, .28); backdrop-filter: blur(20px) saturate(150%); -webkit-backdrop-filter: blur(20px) saturate(150%); }
+  button.pcard { transition: transform .15s var(--ease); }
+  button.pcard:active { transform: scale(.985); }
+  .pcard-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .pcard-head b { font-size: 9.5px; font-weight: 600; letter-spacing: .28em; color: var(--dim); }
+  .pcard-head small { flex: 1; font-size: 10.5px; color: var(--faint); }
+  .pcard-head i, .pcard-head button { margin-left: auto; font-style: normal; font-size: 11px; color: color-mix(in srgb, var(--cyan) 70%, var(--ink)); }
+  .ly-mini { display: block; }
+  .ly-mini p { font-size: 16px; font-weight: 600; line-height: 1.25; padding: 3px 0; color: color-mix(in srgb, var(--ink) 42%, transparent); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .ly-mini p.cur { font-size: 20px; font-weight: 700; color: #fff; text-shadow: 0 0 18px color-mix(in srgb, var(--cyan) 60%, transparent); animation: metain .4s var(--ease); }
+  .ly-mini p:only-child { font-size: 14px; font-weight: 500; color: var(--dim); }
+  .up-list { flex: none; overflow: visible; padding: 0; }
+  .up-list .track { background: rgba(255, 255, 255, .05); }
+  .open-in { padding: 2px 0 6px; }
 }

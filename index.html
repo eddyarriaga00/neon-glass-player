@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
 <div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="grid"></div></div>
@@ -82,7 +82,14 @@
     </div>
     <label class="vol"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6"/></svg><input id="vol" type="range" min="0" max="100" value="80" aria-label="Volume"></label>
     <button id="peek" class="peek" type="button">Lyrics</button>
-    <button id="nextUp" class="nextup" type="button" hidden><img alt=""><span><small>UP NEXT</small><b></b></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+    <button class="pcard" id="lyCard" type="button" aria-label="Open lyrics">
+      <span class="pcard-head"><b>LYRICS</b><i>Open ›</i></span>
+      <span class="ly-mini" id="lyMini"></span>
+    </button>
+    <div class="pcard" id="upCard" hidden>
+      <div class="pcard-head"><b>UP NEXT</b><small id="upNote"></small><button id="upAll" type="button">See all ›</button></div>
+      <ul class="tracks up-list" id="upList"></ul>
+    </div>
     <div class="open-in" id="openIn"></div>
   </section>
 
@@ -150,6 +157,6 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="none" playsinline></audio>
-<script src="app.js?v=13"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>
