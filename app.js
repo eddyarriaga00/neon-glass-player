@@ -237,13 +237,15 @@ function renderList() {
   const album = state.album && (state.album.sp ? state.src === 'spotify' : state.src !== 'liked' && state.src !== 'spotify') ? state.album : null;
   $('listTitle').textContent = state.src === 'liked' ? 'LIKED SONGS' : album ? (album.sp ? 'PLAYLIST' : 'ALBUM') :
     state.query ? 'RESULTS' : 'TRENDING' + (g && g[1] ? ' · ' + g[0].toUpperCase() : ' NOW');
-  $('genres').hidden = !!state.query || !!album || !(state.src === 'all' || state.src === 'apple');
+  const personal = state.src === 'all' && !state.query && !album && (sp.connected() || state.likes.length > 0 || store.get('hist', []).length > 0);
+  $('genres').hidden = !!state.query || !!album || !(state.src === 'apple' || (state.src === 'all' && !personal));
   if (state.src === 'spotify' && !sp.connected()) {
     const li = el('li', 'msg', 'Connect Spotify to see your playlists and liked songs here. ');
     const b = el('button', 'link-btn', 'Connect Spotify'); b.type = 'button'; b.onclick = openSettings; li.append(b);
     ul.replaceChildren(li); return;
   }
   if (state.src === 'spotify' && !state.query && !album) return void renderSpLib(ul);
+  if (personal) return void renderHome(ul);
   if (!state.list.length) {
     ul.replaceChildren(el('li', 'msg',
       state.src === 'liked' ? 'Nothing liked yet. Tap the heart on a song to save it here.' :
@@ -293,6 +295,65 @@ function renderList() {
   }
   ul.replaceChildren(...rows);
   ul.scrollTop = 0;
+}
+// "All" home: built from the user's own music (Spotify playlists and likes, what they played here), not the charts.
+const home = { seq: 0, recs: new Map() };
+const mainArtist = (t) => t.artist.split(/,| & | feat/i)[0].trim();
+function topArtists(extra) {
+  const cnt = new Map();
+  [...store.get('hist', []), ...state.likes, ...(extra || [])].forEach((t) => { if (t && t.artist) { const a = mainArtist(t); cnt.set(a, (cnt.get(a) || 0) + 1); } });
+  return [...cnt].sort((a, b) => b[1] - a[1]).slice(0, 2).map((x) => x[0]);
+}
+async function recsFor(artist, skip) {
+  if (!home.recs.has(artist)) {
+    try { home.recs.set(artist, (await searchApple(artist)).filter((t) => t.artist.toLowerCase().includes(artist.toLowerCase()))); }
+    catch { return []; }
+  }
+  return home.recs.get(artist).filter((t) => !skip.has(t.title.toLowerCase())).slice(0, 5);
+}
+async function renderHome(ul) {
+  const seq = ++home.seq, here = () => seq === home.seq && state.src === 'all' && !state.query && !state.album;
+  const spOk = sp.connected() && /user-library-read/.test(store.get('sp.scope', ''));
+  const hist = store.get('hist', []).filter((t) => t && SRC_LABEL[t.src]);
+  const hr = new Date().getHours();
+  $('listTitle').textContent = hr < 5 ? 'LATE NIGHT' : hr < 12 ? 'GOOD MORNING' : hr < 18 ? 'GOOD AFTERNOON' : 'GOOD EVENING';
+  const title = (s) => el('li', 'list-title sub', s);
+  const covers = (cls, items) => { const li = el('li', 'hero ' + cls), sc = el('div', 'hero-row'); sc.append(...items); li.append(sc); return li; };
+  const cover = (art, name, onPick, heart) => {
+    const c = el('button', 'card'); c.type = 'button';
+    if (heart) { const h = el('em'); h.innerHTML = HEART; c.append(h); } else if (art) { const im = el('img'); im.src = art; im.alt = ''; im.loading = 'lazy'; im.draggable = false; c.append(im); }
+    const cap = el('span'); cap.append(el('b', null, name)); c.append(cap); c.onclick = onPick; return c;
+  };
+  const paint = (mix, recs, loading) => {
+    const rows = [], songs = [];
+    const add = (t) => {
+      const i = songs.length; songs.push(t);
+      const li = trackRow(t, { onPlay: () => { state.queue = songs; state.forced = 0; playIndex(i); setView('player'); }, actions: true });
+      li.style.setProperty('--i', Math.min(i, 14)); rows.push(li);
+    };
+    if (hist.length >= 3) rows.push(title('JUMP BACK IN'), covers('back', hist.map((t, i) => cover(artAt(t, 200), t.title, () => { state.queue = hist; state.forced = 0; playIndex(i); setView('player'); }))));
+    if (spOk) {
+      const open = (p) => () => { $('chips').querySelector('[data-src="spotify"]').click(); openSpList(p); };
+      if (sp.lib) rows.push(title('YOUR PLAYLISTS'), covers('pls', [cover('', 'Liked Songs', open({ id: 'liked', name: 'Liked Songs' }), true), ...sp.lib.map((p) => cover(p.art, p.name, open(p)))]));
+      if (mix && mix.length) { rows.push(title('FROM YOUR PLAYLISTS')); const a = el('li', 'list-acts'); a.append(actsRow()); rows.push(a); mix.forEach(add); }
+    } else {
+      const li = el('li', 'connect'), b = el('button', 'act main', sp.connected() ? 'Reconnect Spotify' : 'Connect Spotify'); b.type = 'button';
+      b.onclick = () => { const id = store.get('sp.cid'); if (sp.connected() && id) sp.login(id); else openSettings(); };
+      li.append(el('b', null, 'Make this page yours'), el('p', null, 'Connect Spotify and your playlists and liked songs show up right here.'), b); rows.push(li);
+      if (state.likes.length) { rows.push(title('YOUR LIKED SONGS')); state.likes.slice(0, 6).forEach(add); }
+    }
+    (recs || []).forEach(([artist, list]) => { if (list.length) { rows.push(title('BECAUSE YOU PLAY ' + artist.toUpperCase())); list.forEach(add); } });
+    if (loading) for (let i = 0; i < 4; i++) { const li = el('li', 'skel'); li.append(el('i'), el('span')); rows.push(li); }
+    state.list = songs;
+    ul.replaceChildren(...rows);
+  };
+  paint(sp.mixed, null, true); ul.scrollTop = 0;
+  let mix = null;
+  if (spOk) { try { mix = await sp.mix(); } catch {} if (!here()) return; }
+  const skip = new Set([...(mix || []), ...(spOk ? [] : state.likes.slice(0, 6))].map((t) => t.title.toLowerCase()));
+  const artists = topArtists(mix), recs = [];
+  for (const a of artists) { const list = await recsFor(a, skip); list.forEach((t) => skip.add(t.title.toLowerCase())); recs.push([a, list]); }
+  if (here()) paint(mix, recs, false);
 }
 const HEART = '<svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>';
 const artAt = (t, n) => t.src === 'apple' ? (t.artBig || t.art || '').replace(/\/\d+x\d+bb/, '/' + n + 'x' + n + 'bb') : (t.artBig || t.art || '');
@@ -988,11 +1049,21 @@ const sp = {
       return { id: p.id, name: p.name, art: ((p.images || [])[0] || {}).url || '', note: n != null ? n + (n === 1 ? ' song' : ' songs') : 'Playlist' };
     });
   },
-  async liked() { return (await this.pages('/me/tracks?limit=50')).map((r) => r.track).filter((x) => x && x.id).map(spTrack); },
-  async playlistTracks(id) {
+  async liked(max) { return (await this.pages('/me/tracks?limit=50', max)).map((r) => r.track).filter((x) => x && x.id).map(spTrack); },
+  // A shuffled sample of the user's liked songs and their first few playlists, for the home page.
+  async mix() {
+    if (this.mixed) return this.mixed;
+    if (!this.lib) this.lib = await this.playlists();
+    const got = await Promise.allSettled([this.liked(1), ...this.lib.slice(0, 6).map((p) => this.playlistTracks(p.id, 1))]);
+    const seen = new Set(), all = [];
+    got.forEach((r) => { if (r.status === 'fulfilled') r.value.forEach((t) => { if (!seen.has(t.id)) { seen.add(t.id); all.push(t); } }); });
+    for (let i = all.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
+    return (this.mixed = all.slice(0, 30));
+  },
+  async playlistTracks(id, max) {
     let rows;
-    try { rows = await this.pages('/playlists/' + id + '/items?limit=50'); }
-    catch (e) { if (!/404/.test(e.message)) throw e; rows = await this.pages('/playlists/' + id + '/tracks?limit=50'); } // older name for the same thing
+    try { rows = await this.pages('/playlists/' + id + '/items?limit=50', max); }
+    catch (e) { if (!/404/.test(e.message)) throw e; rows = await this.pages('/playlists/' + id + '/tracks?limit=50', max); } // older name for the same thing
     return rows.map((r) => r.item || r.track).filter((x) => x && x.id && x.type !== 'episode').map(spTrack);
   },
   connected() { return !!store.get('sp.tok'); },
@@ -1037,7 +1108,7 @@ const sp = {
     this.player.activateElement && this.player.activateElement();
     return this.api('/me/player/play?device_id=' + this.deviceId, { method: 'PUT', body: JSON.stringify({ uris: [uri] }) });
   },
-  logout() { store.del('sp.tok'); store.del('sp.scope'); this.lib = null; this.ready = false; if (this.player) this.player.disconnect(); this.player = null; refreshSpUI(); },
+  logout() { store.del('sp.tok'); store.del('sp.scope'); this.lib = null; this.mixed = null; this.ready = false; if (this.player) this.player.disconnect(); this.player = null; refreshSpUI(); },
   async handleRedirect() {
     const q = new URLSearchParams(location.search);
     if (!q.has('code') && !q.has('error')) return;
