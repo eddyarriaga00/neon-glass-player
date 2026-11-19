@@ -170,13 +170,11 @@ function spTrack(x) {
 }
 // Spotify tab home: Liked Songs and the user's playlists as a grid of tiles.
 async function renderSpLib(ul) {
-  $('listTitle').textContent = 'YOUR SPOTIFY';
+  $('listTitle').textContent = 'Your Spotify'; $('listTitle').classList.add('big');
   const here = () => state.src === 'spotify' && !state.query && !(state.album && state.album.sp);
   if (!/user-library-read/.test(store.get('sp.scope', ''))) {
-    const li = el('li', 'msg', 'Connect Spotify again to let this app see your playlists and liked songs. ');
-    const b = el('button', 'link-btn', 'Reconnect'); b.type = 'button';
-    b.onclick = () => { const id = store.get('sp.cid'); if (id) sp.login(id); else openSettings(); };
-    li.append(b); ul.replaceChildren(li); return;
+    ul.replaceChildren(infoCard('One more step', 'Connect Spotify again so this app can see your playlists and liked songs.', 'Reconnect', () => { const id = store.get('sp.cid'); if (id) sp.login(id); else connectSpotify(); }, SP_ICON));
+    return;
   }
   if (!sp.lib) {
     skeleton();
@@ -234,20 +232,24 @@ function currentList() {
 function renderList() {
   const ul = $('tracks');
   state.list = currentList();
-  syncTabs(); $('listTitle').classList.remove('big');
+  syncTabs();
   const g = GENRES.find((x) => x[1] === state.genre);
   const album = state.album && (state.album.sp ? state.src === 'spotify' : state.src !== 'liked' && state.src !== 'spotify') ? state.album : null;
-  $('listTitle').textContent = state.src === 'liked' ? 'LIKED SONGS' : album ? (album.sp ? 'PLAYLIST' : 'ALBUM') :
-    state.query ? 'RESULTS' : 'TRENDING' + (g && g[1] ? ' · ' + g[0].toUpperCase() : ' NOW');
+  $('listTitle').textContent = state.src === 'liked' ? 'Liked songs' : album ? (album.sp ? 'PLAYLIST' : 'ALBUM') :
+    state.query ? 'Results' : state.src === 'spotify' ? 'Your Spotify' : state.src === 'apple' ? 'Top charts' + (g && g[1] ? ' \u00b7 ' + g[0] : '') : 'Trending now';
+  $('listTitle').classList.toggle('big', !album);
   const personal = state.src === 'all' && !state.query && !album && (sp.connected() || state.likes.length > 0 || store.get('hist', []).length > 0);
   $('genres').hidden = !!state.query || !!album || !(state.src === 'apple' || (state.src === 'all' && !personal));
   if (state.src === 'spotify' && !sp.connected()) {
-    const li = el('li', 'msg', 'Connect Spotify to see your playlists and liked songs here. ');
-    const b = el('button', 'link-btn', 'Connect Spotify'); b.type = 'button'; b.onclick = openSettings; li.append(b);
-    ul.replaceChildren(li); return;
+    ul.replaceChildren(infoCard('Bring in your Spotify', 'Your playlists and liked songs show up here once you connect. It takes about two minutes, and Spotify needs your account to have Premium.', 'Connect Spotify', connectSpotify, SP_ICON));
+    return;
   }
   if (state.src === 'spotify' && !state.query && !album) return void renderSpLib(ul);
   if (personal) return void renderHome(ul);
+  if (!state.list.length && state.src === 'liked') {
+    ul.replaceChildren(infoCard('No liked songs yet', 'Tap the heart on any song and it lands here, ready to play or shuffle.', null, null, HEART));
+    return;
+  }
   if (!state.list.length) {
     ul.replaceChildren(el('li', 'msg',
       state.src === 'liked' ? 'Nothing liked yet. Tap the heart on a song to save it here.' :
@@ -271,18 +273,13 @@ function renderList() {
     });
     hero.append(sc); rows.unshift(hero);
   }
-  const hist = chart ? store.get('hist', []).filter((t) => t && SRC_LABEL[t.src]) : [];
-  if (hist.length >= 3) { // recently played, above the chart
-    const li = el('li', 'hero back'), sc = el('div', 'hero-row');
-    hist.forEach((t, i) => {
-      const c = el('button', 'card'); c.type = 'button';
-      const im = el('img'); im.src = artAt(t, 200); im.alt = ''; im.draggable = false;
-      const cap = el('span'); cap.append(el('b', null, t.title));
-      c.append(im, cap); c.onclick = () => { state.queue = hist; state.forced = 0; playIndex(i); setView('player'); }; sc.append(c);
-    });
-    li.append(sc);
-    rows.unshift(li, el('li', 'list-title sub', $('listTitle').textContent));
-    $('listTitle').textContent = 'JUMP BACK IN';
+  if (state.query && !album && state.list.length > 1) { // the best match as a big card
+    const t = state.list[0], li = el('li', 'top-hit'), b = el('button'); b.type = 'button';
+    const im = el('img'); im.src = artAt(t, 300); im.alt = ''; im.draggable = false;
+    const d = el('span'); d.append(el('small', null, 'Top result'), el('b', null, t.title), el('i', null, t.artist + ' \u00b7 ' + SRC_LABEL[t.src]));
+    const go = el('em'); go.innerHTML = PLAY_SVG;
+    b.append(im, d, go); b.onclick = play(0); li.append(b);
+    rows.splice(0, 1, li, el('li', 'list-title sub', 'Songs'));
   }
   if (album) {
     const li = el('li', 'album-head'), d = el('div');
@@ -292,8 +289,10 @@ function renderList() {
     d.append(el('small', null, [album.year, state.list.length + (state.list.length === 1 ? ' song' : ' songs')].filter(Boolean).join(' \u00b7 ')),
       el('b', null, album.name), el('span', 'by', album.artist), actsRow(back));
     li.append(im, d); rows.unshift(li);
-  } else if (state.src === 'liked' && state.list.length > 1) {
-    const li = el('li', 'list-acts'); li.append(actsRow()); rows.unshift(li);
+  } else if (state.src === 'liked') {
+    const n = state.list.length, li = el('li', 'album-head liked-head'), d = el('div'), pic = el('span', 'pic'); pic.innerHTML = HEART;
+    d.append(el('small', null, 'Playlist'), el('b', null, n + (n === 1 ? ' song you love' : ' songs you love')), el('span', 'by', 'Saved in this app'), actsRow());
+    li.append(pic, d); rows.unshift(li);
   }
   ul.replaceChildren(...rows);
   ul.scrollTop = 0;
@@ -354,9 +353,8 @@ async function renderHome(ul) {
       if (sp.lib) rows.push(title('Your playlists'), covers('pls', [cover('', 'Liked Songs', open({ id: 'liked', name: 'Liked Songs' }), true), ...sp.lib.map((p) => cover(p.art, p.name, open(p)))]));
       if (mix && mix.length) { rows.push(title('From your playlists')); const a = el('li', 'list-acts'); a.append(actsRow()); rows.push(a); mix.forEach(add); }
     } else {
-      const li = el('li', 'connect'), b = el('button', 'act main', sp.connected() ? 'Reconnect Spotify' : 'Connect Spotify'); b.type = 'button';
-      b.onclick = () => { const id = store.get('sp.cid'); if (sp.connected() && id) sp.login(id); else openSettings(); };
-      li.append(el('b', null, 'Make this page yours'), el('p', null, 'Connect Spotify and your playlists and liked songs show up right here.'), b); rows.push(li);
+      rows.push(infoCard('Make this page yours', 'Connect Spotify and your playlists and liked songs show up right here.', sp.connected() ? 'Reconnect Spotify' : 'Connect Spotify',
+        () => { const id = store.get('sp.cid'); if (sp.connected() && id) sp.login(id); else connectSpotify(); }, SP_ICON));
       if (state.likes.length) { rows.push(title('Your liked songs')); state.likes.slice(0, 6).forEach(add); }
     }
     (recs || []).forEach(([artist, list]) => { if (list.length) { rows.push(title('Because you play ' + artist)); list.forEach(add); } });
@@ -407,7 +405,19 @@ function trackRow(t, { rank = 0, onPlay, actions = false }) {
   b.addEventListener('contextmenu', (e) => { e.preventDefault(); if (!held) playNext(t); });
   return li;
 }
+const PLAY_SVG = '<svg viewBox="0 0 24 24" class="solid"><path d="M8 5v14l11-7z"/></svg>';
+function infoCard(title, text, btnLabel, onBtn, icon) {
+  const li = el('li', 'connect big');
+  if (icon) { const i = el('span', 'ic'); i.innerHTML = icon; li.append(i); }
+  li.append(el('b', null, title), el('p', null, text));
+  if (btnLabel) { const b = el('button', 'act main', btnLabel); b.type = 'button'; b.onclick = onBtn; li.append(b); }
+  return li;
+}
+const SP_ICON = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7.5 9.5c3-1 6.5-.7 9 .8M8 12.6c2.5-.7 5.2-.4 7.2.8M8.6 15.4c2-.5 4-.3 5.6.6"/></svg>';
+function connectSpotify() { openSettings(); setTimeout(() => $('clientId').scrollIntoView({ block: 'center', behavior: 'smooth' }), 120); }
 function syncTabs() {
+  const ti = ['all', 'apple', 'spotify', 'liked'].indexOf(state.src);
+  $('tabbar').style.setProperty('--ti', Math.max(0, ti));
   $('chips').querySelectorAll('.chip').forEach((x) => x.classList.toggle('on', x.dataset.src === state.src));
   document.querySelectorAll('#tabbar button').forEach((b) => b.setAttribute('aria-current', String(b.dataset.src === state.src)));
 }
@@ -1333,7 +1343,7 @@ const sp = {
 };
 function refreshSpUI() {
   const on = sp.connected(), b = $('settingsBtn'), pSp = state.primary === 'spotify';
-  b.textContent = 'Primary: ' + SRC_LABEL[state.primary];
+  b.title = 'Settings \u00b7 Primary: ' + SRC_LABEL[state.primary];
   b.classList.toggle('ok', !pSp || sp.ready);
   $('spLogout').hidden = !on;
   document.querySelectorAll('#primarySeg button').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.p === state.primary)));
