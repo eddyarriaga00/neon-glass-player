@@ -703,3 +703,6 @@ dialog { max-height: 88dvh; overflow-y: auto; }
   .has-video .library { background: rgba(10, 6, 20, .55); }
   .has-video .player { background: linear-gradient(rgba(6, 3, 12, .1), rgba(6, 3, 12, .05) 30%, rgba(6, 3, 12, .5) 58%, rgba(6, 3, 12, .85)); }
 }
+@media (max-width: 700px), (max-width: 880px) and (orientation: portrait) {
+  .has-video.sheet .library { visibility: hidden; }
+}
