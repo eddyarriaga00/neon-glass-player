@@ -86,7 +86,8 @@ async function searchApple(q) {
   const r = await fetch('https://itunes.apple.com/search?entity=song&limit=25&term=' + encodeURIComponent(q));
   if (!r.ok) throw new Error('Apple search failed');
   const j = await r.json();
-  return j.results.filter((x) => x.previewUrl).map(appleTrack);
+  const seen = new Set(), key = (x) => (x.trackName + '|' + x.artistName).toLowerCase().replace(/[^a-z0-9|]+/g, '');
+  return j.results.filter((x) => x.previewUrl && !seen.has(key(x)) && seen.add(key(x))).map(appleTrack); // same song listed twice: keep one
 }
 const appleTrack = (x) => ({
   id: 'a' + x.trackId, src: 'apple', title: x.trackName, artist: x.artistName, album: x.collectionName || '',
