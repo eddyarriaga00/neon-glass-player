@@ -14,10 +14,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=22">
+<link rel="stylesheet" href="style.css?v=23">
 </head>
 <body>
 <canvas id="stage" aria-hidden="true"></canvas>
+<video id="mv" muted playsinline loop preload="auto" aria-hidden="true"></video>
 <div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="grid"></div></div>
 
 <header class="top">
@@ -130,11 +131,12 @@
     <div class="swatches" id="swatches" role="group" aria-label="Color theme"></div>
     <label class="sw"><span>Match colors to the album art</span><input type="checkbox" id="artColors"></label>
     <h3>Animated background</h3>
-    <div class="seg four" id="sceneSeg" role="group" aria-label="Animated background">
+    <div class="seg five" id="sceneSeg" role="group" aria-label="Animated background">
       <button type="button" data-n="0">Off</button>
       <button type="button" data-n="1">Sunset</button>
       <button type="button" data-n="2">Aurora</button>
       <button type="button" data-n="3">Tunnel</button>
+      <button type="button" data-n="4">Video</button>
     </div>
     <label class="sw" id="tiltRow" hidden><span>Tilt the cover in 3D when you move your phone</span><input type="checkbox" id="tilt"></label>
     <h3>Lyrics size</h3>
@@ -175,6 +177,6 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="none" playsinline></audio>
-<script src="app.js?v=22"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>

@@ -583,6 +583,7 @@ function setPlayingUI() {
   $('playIcon').setAttribute('d', d); $('miniIcon').setAttribute('d', d);
   $('play').setAttribute('aria-label', p ? 'Pause' : 'Play'); $('miniPlay').setAttribute('aria-label', p ? 'Pause' : 'Play');
   document.body.classList.toggle('is-playing', p);
+  if (typeof mv !== 'undefined') mv.sync();
   if ('mediaSession' in navigator && state.track) navigator.mediaSession.playbackState = p ? 'playing' : 'paused';
 }
 audio.addEventListener('play', setPlayingUI);
@@ -615,6 +616,7 @@ function showTrack(t) {
   root.style.setProperty('--art', t.artBig || t.art ? 'url("' + artAt(t, 300) + '")' : 'none');
   const mt = document.querySelector('.meta-text'); mt.classList.remove('in'); void mt.offsetWidth; mt.classList.add('in');
   wave.seed(t);
+  if (typeof mv !== 'undefined') mv.load(t);
   $('like').setAttribute('aria-pressed', String(state.likes.some((x) => x.id === t.id)));
   const q = encodeURIComponent(t.title + ' ' + t.artist);
   const links = [
@@ -938,8 +940,8 @@ const wave = {
 
 /* ---------- living background: a small shader scene drawn on the graphics chip, colored by the theme or the album art ---------- */
 const stage = {
-  c: $('stage'), gl: null, scene: store.get('scene', 1), t: 0, last: 0, e: 0, frame: 0, u: {},
-  NAMES: ['Off', 'Sunset', 'Aurora', 'Tunnel'],
+  c: $('stage'), gl: null, scene: store.get('scene', 4), t: 0, last: 0, e: 0, frame: 0, u: {},
+  NAMES: ['Off', 'Sunset', 'Aurora', 'Tunnel', 'Music video'],
   col: [[1, 0.18, 0.82], [0.16, 0.85, 1], [0.48, 0.24, 1]], tgt: [[1, 0.18, 0.82], [0.16, 0.85, 1], [0.48, 0.24, 1]],
   FRAG: `precision highp float;
 uniform vec2 r; uniform float t, e, sc; uniform vec3 a, b, c;
@@ -1025,18 +1027,23 @@ void main() {
     });
   },
   apply() {
-    const on = !!this.gl && this.scene > 0;
+    const on = this.scene > 0 && (!!this.gl || mv.ok);
     document.body.classList.toggle('has-stage', on);
+    document.body.classList.toggle('has-video', this.scene === 4 && mv.ok);
     document.querySelectorAll('#sceneSeg button').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.n === this.scene)));
   },
   set(n, announce) {
-    this.scene = this.gl ? n : 0; store.set('scene', n); this.apply();
-    if (announce) toast(this.gl ? 'Background: ' + this.NAMES[n] : 'This device cannot draw the animated backgrounds.');
+    this.scene = this.gl || n === 4 ? n : 0; store.set('scene', n);
+    if (n === 4) mv.load(state.track); else mv.stop();
+    this.apply();
+    if (announce) toast(this.gl || n === 4 ? 'Background: ' + this.NAMES[n] : 'This device cannot draw the animated backgrounds.');
   },
   draw(ts) {
     requestAnimationFrame((x) => this.draw(x));
     const gl = this.gl;
-    if (!gl || !this.scene || document.hidden) return;
+    let sc = this.scene;
+    if (sc === 4) { if (mv.ok) return; sc = 1; } // no music video for this song: show the sunset instead
+    if (!gl || !sc || document.hidden) return;
     if (!finePointer && (this.frame++ & 1)) return; // every other frame on phones, to go easy on the battery
     const dt = Math.min(0.1, (ts - this.last) / 1000 || 0); this.last = ts;
     const playing = isPlaying();
@@ -1048,14 +1055,45 @@ void main() {
     }
     this.e += (target - this.e) * 0.25;
     for (let i = 0; i < 3; i++) for (let k = 0; k < 3; k++) this.col[i][k] += (this.tgt[i][k] - this.col[i][k]) * 0.05;
-    const sc = Math.min(2, devicePixelRatio || 1) * (finePointer ? 0.75 : 0.5), w = Math.round(innerWidth * sc), h = Math.round(innerHeight * sc);
+    const q = Math.min(2, devicePixelRatio || 1) * (finePointer ? 0.75 : 0.5), w = Math.round(innerWidth * q), h = Math.round(innerHeight * q);
     if (this.c.width !== w || this.c.height !== h) { this.c.width = w; this.c.height = h; gl.viewport(0, 0, w, h); }
-    gl.uniform2f(this.u.r, w, h); gl.uniform1f(this.u.t, this.t % 3600); gl.uniform1f(this.u.e, this.e); gl.uniform1f(this.u.sc, this.scene - 1);
+    gl.uniform2f(this.u.r, w, h); gl.uniform1f(this.u.t, this.t % 3600); gl.uniform1f(this.u.e, this.e); gl.uniform1f(this.u.sc, sc - 1);
     gl.uniform3fv(this.u.a, this.col[0]); gl.uniform3fv(this.u.b, this.col[1]); gl.uniform3fv(this.u.c, this.col[2]);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   },
 };
 stage.init();
+// Music video background: Apple's free search has short music video clips. Played muted behind the app, as visuals only.
+const mv = {
+  v: $('mv'), ok: false, cache: new Map(), seq: 0,
+  clean: (s) => s.replace(/\s*[(\[].*$/, '').trim(),
+  async find(t) {
+    if (this.cache.has(t.id)) return this.cache.get(t.id);
+    let url = null;
+    try {
+      const a = mainArtist(t).toLowerCase(), ti = this.clean(t.title).toLowerCase();
+      const r = await fetch('https://itunes.apple.com/search?entity=musicVideo&limit=10&term=' + encodeURIComponent(this.clean(t.title) + ' ' + mainArtist(t)));
+      const j = r.ok ? await r.json() : { results: [] };
+      const hit = j.results.find((x) => x.previewUrl && (x.artistName || '').toLowerCase().includes(a) && this.clean(x.trackName || '').toLowerCase() === ti) ||
+        j.results.find((x) => x.previewUrl && (x.artistName || '').toLowerCase().includes(a) && (x.trackName || '').toLowerCase().startsWith(ti));
+      url = hit ? hit.previewUrl : null;
+    } catch { url = null; }
+    this.cache.set(t.id, url); return url;
+  },
+  async load(t) {
+    const seq = ++this.seq;
+    if (stage.scene !== 4 || !t) return this.stop();
+    const url = await this.find(t);
+    if (seq !== this.seq) return;
+    if (!url) { this.stop(); return; }
+    if (this.v.getAttribute('src') !== url) { this.ok = false; this.v.classList.remove('on'); stage.apply(); this.v.src = url; }
+    this.sync();
+  },
+  stop() { this.seq++; this.ok = false; this.v.classList.remove('on'); this.v.pause(); this.v.removeAttribute('src'); this.v.load(); stage.apply(); },
+  sync() { if (!this.v.getAttribute('src')) return; if (isPlaying() || !this.ok) this.v.play().catch(() => {}); else this.v.pause(); },
+};
+mv.v.addEventListener('playing', () => { if (!mv.ok) { mv.ok = true; mv.v.classList.add('on'); stage.apply(); } if (!isPlaying() && state.track) mv.v.pause(); });
+mv.v.addEventListener('error', () => { if (mv.v.getAttribute('src')) { mv.ok = false; mv.v.classList.remove('on'); stage.apply(); } });
 $('sceneSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) stage.set(+b.dataset.n, false); });
 $('sceneBtn').onclick = () => { buzz(); stage.set((stage.scene + 1) % stage.NAMES.length, true); };
 
@@ -1496,7 +1534,8 @@ $('note').addEventListener('input', () => store.set('note', $('note').value));
   setVol(store.get('vol', 80));
   setLz(store.get('lz', 'm'));
   viz.draw(0);
-  if (!stage.gl) stage.scene = 0;
+  if (!stage.gl && stage.scene !== 4) stage.scene = 0;
+  if (stage.scene === 4 && state.track) mv.load(state.track);
   stage.apply(); stage.draw(0);
   await sp.handleRedirect();
   refreshSpUI();
