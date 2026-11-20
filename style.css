@@ -694,7 +694,7 @@ dialog { max-height: 88dvh; overflow-y: auto; }
 #mv { position: fixed; inset: 0; width: 100%; height: 100%; overflow: hidden; z-index: -1; opacity: 0; pointer-events: none; filter: brightness(.6) saturate(1.2); transform: scale(1.08); transition: opacity .9s; animation: drift 26s ease-in-out infinite alternate; }
 #mv video, #mv iframe { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border: 0; }
 #mv video { width: 100%; height: 100%; object-fit: cover; }
-#mv iframe { width: max(100vw, 177.78vh); height: max(56.25vw, 100vh); }
+#mv iframe { width: max(128vw, 227.6vh); height: max(72vw, 128vh); } /* oversized so YouTube's title bar and logo fall outside the screen */
 #videoSettings input { width: 100%; margin: 6px 0; }
 #mv.on { opacity: 1; }
 @keyframes drift { from { transform: scale(1.08) translate(-1.5%, -1%); } to { transform: scale(1.16) translate(1.5%, 1%); } }
@@ -752,4 +752,34 @@ dialog { max-height: 88dvh; overflow-y: auto; }
   .tabbar button[aria-current="true"] { background: none; }
   .tabbar button { z-index: 1; }
   .liked-head .pic { width: 108px; height: 108px; }
+}
+
+/* ---------- v29: watch mode, video polish ---------- */
+#mv { transition: opacity .9s, filter .6s; }
+body:not(.is-playing) #mv { filter: brightness(.32) saturate(1) blur(10px); } /* paused: soften the frame and whatever YouTube overlays on it */
+.vset { display: grid; gap: 6px; padding: 12px; border-radius: 14px; background: rgba(255, 255, 255, .05); border: 1px solid var(--line); }
+.vset label { font-size: 10px; letter-spacing: .24em; text-transform: uppercase; color: var(--faint); }
+.vset .status { min-height: 0; }
+.vrow { display: flex; gap: 8px; align-items: center; }
+#videoSettings .vrow input { flex: 1; min-width: 0; margin: 0; }
+.vrow .act { flex: none; padding: 10px 14px; }
+.vset a { font-size: 12px; }
+.vset a:empty { display: none; }
+#theaterBtn, #theaterTop, #theaterExit { display: none; }
+.has-stage #theaterTop { display: grid; }
+.theater #theaterExit { display: block; position: fixed; z-index: 50; right: 14px; top: calc(12px + env(safe-area-inset-top)); font-size: 11px; padding: 7px 13px; border-radius: 99px; border: 1px solid rgba(255, 255, 255, .2); background: rgba(10, 6, 20, .55); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); opacity: .75; }
+.theater #mv { filter: brightness(.95) saturate(1.1); }
+.theater:not(.is-playing) #mv { filter: brightness(.5) blur(6px); }
+.theater .top, .theater .mini, .theater .tabbar { display: none; }
+.theater .library, .theater .lyrics { visibility: hidden; }
+.theater .player { justify-content: flex-end; gap: 12px; overflow: hidden; border-color: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; background: linear-gradient(transparent 52%, rgba(6, 3, 12, .55) 74%, rgba(6, 3, 12, .9)) !important; }
+.theater .player > .sheet-head, .theater .art-wrap, .theater .pcard, .theater .open-in, .theater .vol, .theater #viz, .theater .backdrop { display: none; }
+.theater .peek { display: none; }
+.theater .peek.live { display: block; order: -1; width: 100%; padding: 0 4px 4px; background: none; border: 0; text-align: center; white-space: normal; font-size: 21px; font-weight: 700; line-height: 1.25; letter-spacing: -.01em; color: #fff; text-shadow: 0 2px 16px rgba(0, 0, 0, .9), 0 0 22px color-mix(in srgb, var(--cyan) 50%, transparent); cursor: default; }
+.theater .meta, .theater .progress, .theater .controls { text-shadow: 0 1px 10px rgba(0, 0, 0, .7); }
+@media (max-width: 700px), (max-width: 880px) and (orientation: portrait) {
+  .has-stage #theaterBtn { display: inline-block; }
+  .has-stage #theaterTop { display: none; }
+  .has-stage .grab { font-size: 0; }
+  .theater .player { padding-bottom: calc(28px + env(safe-area-inset-bottom)); }
 }

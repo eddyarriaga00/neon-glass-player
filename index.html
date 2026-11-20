@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=27">
+<link rel="stylesheet" href="style.css?v=29">
 </head>
 <body>
 <canvas id="stage" aria-hidden="true"></canvas>
@@ -25,6 +25,7 @@
   <span class="brand">MUSIC UI</span>
   <div class="top-right">
     <button id="popBtn" class="link-btn" type="button" hidden>Widget</button>
+    <button id="theaterTop" class="icon-btn" type="button" aria-label="Watch mode" title="Watch mode"><svg viewBox="0 0 24 24"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4"/></svg></button>
     <button id="sceneBtn" class="icon-btn" type="button" aria-label="Change background scene" title="Background scene"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg></button>
     <button id="settingsBtn" class="icon-btn" type="button" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
     <button id="themeBtn" class="dots" type="button" aria-label="Change color theme"><i></i><i></i><i></i></button>
@@ -60,7 +61,7 @@
     <div class="sheet-head" id="playerHead">
       <button id="closePlayer" type="button" aria-label="Close player"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
       <span class="grab">NOW PLAYING</span>
-      <span class="pills"><button id="openQueue" type="button" class="pill">Up next</button><button id="openLyrics" type="button" class="pill">Lyrics</button></span>
+      <span class="pills"><button id="theaterBtn" type="button" class="pill">Watch</button><button id="openQueue" type="button" class="pill">Up next</button><button id="openLyrics" type="button" class="pill">Lyrics</button></span>
     </div>
     <div class="art-wrap" id="artWrap">
       <div class="vinyl" aria-hidden="true"></div>
@@ -139,11 +140,10 @@
       <button type="button" data-n="3">Tunnel</button>
       <button type="button" data-n="4">Video</button>
     </div>
-    <div id="videoSettings" hidden>
-      <label for="videoLink">YouTube video for this song</label>
-      <input id="videoLink" type="url" placeholder="Automatic · paste a YouTube link" autocomplete="off">
-      <button id="saveVideo" type="button" class="link-btn">Apply</button>
-      <p id="videoStatus" role="status"></p>
+    <div id="videoSettings" class="vset" hidden>
+      <label for="videoLink">Video for this song</label>
+      <p id="videoStatus" class="status" role="status"></p>
+      <div class="vrow"><input id="videoLink" type="url" placeholder="Automatic, or paste a YouTube link" autocomplete="off"><button id="saveVideo" type="button" class="act main">Apply</button></div>
       <a id="videoMatch" target="_blank" rel="noopener"></a>
     </div>
     <label class="sw" id="tiltRow" hidden><span>Tilt the cover in 3D when you move your phone</span><input type="checkbox" id="tilt"></label>
@@ -183,8 +183,9 @@
   </form>
 </dialog>
 
+<button id="theaterExit" type="button" class="pill" aria-label="Leave watch mode">Show player</button>
 <div id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="none" playsinline></audio>
-<script src="app.js?v=28"></script>
+<script src="app.js?v=29"></script>
 </body>
 </html>

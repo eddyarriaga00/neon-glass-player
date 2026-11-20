@@ -65,6 +65,7 @@ let skipPop = 0;
 function setView(v, fromPop) {
   const cur = app.dataset.view; if (v === cur) return;
   app.dataset.view = v;
+  if (v === 'library') document.body.classList.remove('theater');
   document.body.classList.toggle('sheet', v !== 'library');
   if (v === 'player' && cur === 'library') $('player').scrollTop = 0;
   if (fromPop || !isPhone()) return;
@@ -1276,7 +1277,7 @@ const mv = {
       this.timer = setTimeout(fail, 10000);
       this.player = new YT.Player(host, {
         host: 'https://www.youtube-nocookie.com', videoId: id,
-        playerVars: { origin: location.origin, playsinline: 1, controls: 0, disablekb: 1, loop: 1, playlist: id },
+        playerVars: { origin: location.origin, playsinline: 1, controls: 0, disablekb: 1, loop: 1, playlist: id, mute: 1, rel: 0, iv_load_policy: 3, fs: 0 }, // muted from the start so phones allow it to play on its own
         events: {
           onReady: () => {
             if (seq !== this.seq) return;
@@ -1690,6 +1691,15 @@ $('miniNext').onclick = () => step(1);
 $('miniOpen').onclick = () => setView('player');
 $('closePlayer').onclick = () => setView('library');
 $('openLyrics').onclick = $('peek').onclick = $('lyCard').onclick = () => { setTab('lyrics'); setView('lyrics'); };
+// Watch mode: clear the screen down to the song, the controls and the lyric line, so the video or scene fills it.
+function theater(on) {
+  document.body.classList.toggle('theater', on);
+  if (on) toast('Tap the background to bring everything back.');
+}
+$('theaterBtn').onclick = $('theaterTop').onclick = () => { buzz(); theater(true); };
+$('theaterExit').onclick = () => theater(false);
+$('player').addEventListener('click', (e) => { if (e.target === $('player') && document.body.classList.contains('theater')) theater(false); });
+$('peek').addEventListener('click', (e) => { if (document.body.classList.contains('theater')) e.stopImmediatePropagation(); }, true);
 $('openQueue').onclick = $('upAll').onclick = () => { setTab('queue'); setView('lyrics'); };
 // Mini player: swipe sideways to skip, swipe up to open.
 (function miniGestures() {
@@ -1793,6 +1803,7 @@ function setVol(v) {
 $('vol').addEventListener('input', () => { setVol(+$('vol').value); store.set('vol', +$('vol').value); });
 document.addEventListener('keydown', (e) => {
   if ($('settings').open) return;
+  if (e.code === 'Escape' && document.body.classList.contains('theater')) { theater(false); return; }
   if (e.code === 'Escape') { setView(app.dataset.view === 'lyrics' ? 'player' : 'library'); return; }
   if (e.target.matches('input, textarea')) return;
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
