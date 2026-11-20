@@ -586,7 +586,7 @@ const pos = () => state.backend === 'spotify' ? sp.position() : audio.currentTim
 const dur = () => state.backend === 'spotify' ? sp.st.dur : (isFinite(audio.duration) ? audio.duration : 0);
 const isPlaying = () => state.backend === 'spotify' ? !sp.st.paused : !audio.paused;
 function seekTo(s) {
-  if (state.backend === 'spotify') { sp.player.seek(s * 1000); sp.st.pos = s * 1000; sp.st.ts = Date.now(); }
+  if (state.backend === 'spotify') { sp.player.seek(s * 1000); sp.st.pos = s * 1000; sp.st.ts = Date.now(); mv.seek(s); }
   else if (dur()) audio.currentTime = Math.min(s, dur() - 0.2);
 }
 function setPlayingUI() {
@@ -820,6 +820,7 @@ function lineTap(i) {
   // Preview clips start somewhere mid-song: the tapped line tells us where.
   const first = state.offset === null;
   state.offset = l.t - pos();
+  mv.seek(pos());
   state.lineIdx = -2;
   if (first) { $('lines').className = 'lines'; toast('Lyrics synced to the preview.'); }
   updateHint(); syncLyrics();
@@ -1074,39 +1075,199 @@ void main() {
   },
 };
 stage.init();
-// Music video background: Apple's free search has short music video clips. Played muted behind the app, as visuals only.
+// TheAudioDB links recordings to YouTube. Keep the existing Apple preview as a fallback.
+function youtubeId(link) {
+  try {
+    const url = new URL(link);
+    if (!['https:', 'http:'].includes(url.protocol)) return null;
+    const host = url.hostname.replace(/^(www\.|m\.)/, '');
+    let id;
+    if (host === 'youtu.be') id = url.pathname.slice(1);
+    if (['youtube.com', 'music.youtube.com', 'youtube-nocookie.com'].includes(host)) {
+      id = url.pathname === '/watch' ? url.searchParams.get('v') : url.pathname.match(/^\/(?:shorts|embed|live)\/([^/]+)$/)?.[1];
+    }
+    return /^[\w-]{11}$/.test(id || '') ? id : null;
+  } catch { return null; }
+}
+
+let youtubeReady;
+function loadYouTubeAPI() {
+  if (window.YT?.Player) return Promise.resolve(window.YT);
+  if (!youtubeReady) youtubeReady = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    const fail = () => {
+      clearTimeout(timer);
+      script.remove();
+      youtubeReady = null;
+      reject(new Error('YouTube player unavailable'));
+    };
+    const timer = setTimeout(fail, 8000);
+    window.onYouTubeIframeAPIReady = () => { clearTimeout(timer); resolve(window.YT); };
+    script.onerror = fail;
+    script.src = 'https://www.youtube.com/iframe_api';
+    document.head.append(script);
+  });
+  return youtubeReady;
+}
+
 const mv = {
-  v: $('mv'), ok: false, cache: new Map(), seq: 0,
-  clean: (s) => s.replace(/\s*[(\[].*$/, '').trim(),
-  async find(t) {
-    if (this.cache.has(t.id)) return this.cache.get(t.id);
-    let url = null;
+  box: $('mv'), ok: false, seq: 0, cache: new Map(), timer: 0,
+  clean: (s) => s.replace(/\s*[(\[].*$/, '').trim().toLowerCase(),
+  async find(t, provider) {
+    const key = provider + ':' + t.id;
+    if (this.cache.has(key)) return this.cache.get(key);
+    const artist = mainArtist(t), title = this.clean(t.title);
+    const youtube = provider === 'youtube';
+    const params = youtube ? { s: artist, t: title } : { entity: 'musicVideo', limit: '10', term: title + ' ' + artist };
+    const base = youtube ? 'https://www.theaudiodb.com/api/v1/json/123/searchtrack.php' : 'https://itunes.apple.com/search';
+    const controller = this.search = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     try {
-      const a = mainArtist(t).toLowerCase(), ti = this.clean(t.title).toLowerCase();
-      const r = await fetch('https://itunes.apple.com/search?entity=musicVideo&limit=10&term=' + encodeURIComponent(this.clean(t.title) + ' ' + mainArtist(t)));
-      const j = r.ok ? await r.json() : { results: [] };
-      const hit = j.results.find((x) => x.previewUrl && (x.artistName || '').toLowerCase().includes(a) && this.clean(x.trackName || '').toLowerCase() === ti) ||
-        j.results.find((x) => x.previewUrl && (x.artistName || '').toLowerCase().includes(a) && (x.trackName || '').toLowerCase().startsWith(ti));
-      url = hit ? hit.previewUrl : null;
-    } catch { url = null; }
-    this.cache.set(t.id, url); return url;
+      const r = await fetch(base + '?' + new URLSearchParams(params), { signal: controller.signal });
+      if (!r.ok) return null;
+      const data = await r.json();
+      let match;
+      if (youtube) {
+        match = (data.track || []).find(x => this.clean(x.strTrack || '') === title &&
+          mainArtist({ artist: x.strArtist || '' }).toLowerCase() === artist.toLowerCase() && youtubeId(x.strMusicVid));
+        match = match && youtubeId(match.strMusicVid);
+      } else {
+        match = (data.results || []).find(x => x.previewUrl && this.clean(x.trackName || '') === title &&
+          (x.artistName || '').toLowerCase().includes(artist.toLowerCase()))?.previewUrl;
+      }
+      if (match) this.cache.set(key, match);
+      return match;
+    } catch { return null; } finally { clearTimeout(timeout); }
+  },
+  visible(on) {
+    this.ok = on;
+    this.box.classList.toggle('on', on);
+    stage.apply();
+  },
+  stop() {
+    ++this.seq;
+    this.search?.abort();
+    clearTimeout(this.timer);
+    this.ready = false;
+    this.player?.destroy();
+    this.player = null;
+    if (this.clip) {
+      this.clip.pause();
+      this.clip.removeAttribute('src');
+      this.clip.load();
+      this.clip = null;
+    }
+    this.box.replaceChildren();
+    this.visible(false);
+    $('videoSettings').hidden = stage.scene !== 4 || !state.track;
   },
   async load(t) {
-    const seq = ++this.seq;
-    if (stage.scene !== 4 || !t) return this.stop();
-    const url = await this.find(t);
+    this.stop();
+    if (stage.scene !== 4 || !t) return;
+    const seq = this.seq;
+    const saved = store.get('video.' + t.id);
+    $('videoLink').value = saved ? 'https://youtu.be/' + saved : '';
+    $('videoLink').setCustomValidity('');
+    $('videoStatus').textContent = 'Looking for a music video…';
+    const id = saved || await this.find(t, 'youtube');
     if (seq !== this.seq) return;
-    if (!url) { this.stop(); return; }
-    if (this.v.getAttribute('src') !== url) { this.ok = false; this.v.classList.remove('on'); stage.apply(); this.v.src = url; }
+    if (!id) return this.fallback(t, seq);
+    try {
+      const YT = await loadYouTubeAPI();
+      if (seq !== this.seq) return;
+      const host = document.createElement('div');
+      this.box.append(host);
+      const fail = () => this.fallback(t, seq);
+      this.timer = setTimeout(fail, 10000);
+      this.player = new YT.Player(host, {
+        host: 'https://www.youtube-nocookie.com', videoId: id,
+        playerVars: { origin: location.origin, playsinline: 1, controls: 0, disablekb: 1, loop: 1, playlist: id },
+        events: {
+          onReady: () => {
+            if (seq !== this.seq) return;
+            clearTimeout(this.timer);
+            this.ready = true;
+            this.player.mute();
+            this.seek(pos());
+            this.sync();
+            if (!isPlaying()) $('videoStatus').textContent = 'YouTube video ready.';
+          },
+          onStateChange: e => {
+            if (seq !== this.seq || e.data !== YT.PlayerState.PLAYING) return;
+            clearTimeout(this.timer);
+            this.visible(true);
+            $('videoStatus').textContent = 'Showing the YouTube video.';
+            if (!isPlaying()) this.player.pauseVideo();
+          },
+          onError: fail, onAutoplayBlocked: fail,
+        },
+      });
+    } catch { this.fallback(t, seq); }
+  },
+  async fallback(t, seq) {
+    if (seq !== this.seq) return;
+    this.stop();
+    const current = this.seq;
+    $('videoStatus').textContent = 'Looking for an Apple video clip…';
+    const url = await this.find(t, 'apple');
+    if (current !== this.seq) return;
+    const unavailable = () => {
+      if (current !== this.seq) return;
+      this.stop();
+      $('videoStatus').textContent = 'No playable video found. Try another YouTube link.';
+    };
+    if (!url) return unavailable();
+    const clip = this.clip = document.createElement('video');
+    clip.muted = true;
+    clip.playsInline = true;
+    clip.loop = true;
+    clip.onerror = unavailable;
+    clip.onplaying = () => {
+      if (current !== this.seq) return;
+      this.visible(true);
+      $('videoStatus').textContent = 'Showing an Apple video clip.';
+    };
+    this.box.append(clip);
+    clip.src = url;
     this.sync();
   },
-  stop() { this.seq++; this.ok = false; this.v.classList.remove('on'); this.v.pause(); this.v.removeAttribute('src'); this.v.load(); stage.apply(); },
-  sync() { if (!this.v.getAttribute('src')) return; if (isPlaying() || !this.ok) this.v.play().catch(() => {}); else this.v.pause(); },
+  seek(seconds) {
+    if (this.ready) this.player.seekTo(Math.max(0, seconds + (state.offset || 0)), true);
+  },
+  sync() {
+    if (this.ready) {
+      clearTimeout(this.timer);
+      if (isPlaying()) {
+        this.player.playVideo();
+        if (!this.ok) {
+          const seq = this.seq;
+          this.timer = setTimeout(() => this.fallback(state.track, seq), 10000);
+        }
+      } else this.player.pauseVideo();
+    }
+    if (this.clip) {
+      if (isPlaying()) this.clip.play().catch(() => {});
+      else this.clip.pause();
+    }
+  },
 };
-mv.v.addEventListener('playing', () => { if (!mv.ok) { mv.ok = true; mv.v.classList.add('on'); stage.apply(); } if (!isPlaying() && state.track) mv.v.pause(); });
-mv.v.addEventListener('error', () => { if (mv.v.getAttribute('src')) { mv.ok = false; mv.v.classList.remove('on'); stage.apply(); } });
+$('saveVideo').onclick = () => {
+  const t = state.track, input = $('videoLink');
+  if (!t) return;
+  const link = input.value.trim(), id = youtubeId(link);
+  if (link && !id) {
+    input.setCustomValidity('Enter a YouTube video link.');
+    input.reportValidity();
+    return;
+  }
+  if (id) store.set('video.' + t.id, id);
+  else store.del('video.' + t.id);
+  mv.load(t);
+};
+$('videoLink').oninput = () => $('videoLink').setCustomValidity('');
+audio.addEventListener('seeked', () => { if (state.backend === 'audio') mv.seek(pos()); });
 $('sceneSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) stage.set(+b.dataset.n, false); });
-$('sceneBtn').onclick = () => { buzz(); stage.set((stage.scene + 1) % stage.NAMES.length, true); };
+$('sceneBtn').onclick = () => { buzz(); stage.set(stage.gl ? (stage.scene + 1) % stage.NAMES.length : (stage.scene === 4 ? 0 : 4), true); };
 
 /* ---------- ticker ---------- */
 setInterval(() => {
