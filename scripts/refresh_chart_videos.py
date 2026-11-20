@@ -1,12 +1,10 @@
-"""Refresh YouTube links published on Shazam's song pages for the player charts."""
+"""Add artist-verified Wikidata video IDs for the Apple charts to the bundled catalog."""
 import json
 import re
-import sys
 import unicodedata
-from concurrent.futures import ThreadPoolExecutor
-from html.parser import HTMLParser
+from collections import defaultdict
 from pathlib import Path
-from urllib.parse import quote, urlsplit, parse_qs
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 CATALOG = Path(__file__).resolve().parents[1] / "chart-videos.json"
@@ -15,78 +13,60 @@ USER_AGENT = "NeonGlassPlayer/1.0 (https://github.com/eddyarriaga00/neon-glass-p
 
 
 def fetch(url):
-    with urlopen(Request(url, headers={"User-Agent": USER_AGENT}), timeout=15) as res:
-        return res.read().decode("utf-8")
-
-
-class RecordingParser(HTMLParser):
-    """Read only the page's structured MusicRecording metadata."""
-
-    reading_json = False
-    recording = None
-
-    def handle_starttag(self, tag, attrs):
-        self.reading_json = tag == "script" and dict(attrs).get("type") == "application/ld+json"
-
-    def handle_endtag(self, tag):
-        if tag == "script":
-            self.reading_json = False
-
-    def handle_data(self, data):
-        if self.reading_json:
-            item = json.loads(data)
-            if isinstance(item, dict) and item.get("@type") == "MusicRecording":
-                self.recording = item
+    with urlopen(Request(url, headers={"User-Agent": USER_AGENT}), timeout=45) as res:
+        return json.load(res)
 
 
 def chart(genre):
     path = f"genre={genre}/" if genre else ""
-    url = f"https://itunes.apple.com/us/rss/topsongs/limit=30/{path}json"
-    entries = json.loads(fetch(url))["feed"]["entry"]
+    entries = fetch(f"https://itunes.apple.com/us/rss/topsongs/limit=30/{path}json")["feed"]["entry"]
     return {e["id"]["attributes"]["im:id"]: (e["im:name"]["label"], e["im:artist"]["label"]) for e in entries}
 
 
-def video_for(item):
-    track_id, (title, artist) = item
-    slug = re.sub(r"[^\w]+", "-", unicodedata.normalize("NFKD", title).lower()).strip("-")
-    parser = RecordingParser()
-    parser.feed(fetch(f"https://www.shazam.com/song/{track_id}/{quote(slug or 'song')}"))
-    song = parser.recording
-    if not song or not urlsplit(song.get("url", "")).path.startswith(f"/song/{track_id}/"):
-        return None
-    link = urlsplit((song.get("video") or {}).get("embedUrl", ""))
-    if link.hostname == "youtu.be":
-        video_id = link.path.strip("/")
-    elif link.hostname in ("youtube.com", "www.youtube.com") and link.path == "/watch":
-        video_id = parse_qs(link.query).get("v", [""])[0]
-    else:
-        return None
-    if re.fullmatch(r"[\w-]{11}", video_id, re.ASCII):
-        return {"title": title, "artist": artist, "youtube": video_id}
+def title_label(title):
+    return re.sub(r"\s+[(\[]\s*(?:feat\.|ft\.|from\b).*?[)\]]$", "", title, flags=re.I).replace("’", "'")
+
+
+def words(text):
+    folded = unicodedata.normalize("NFKC", text).casefold().replace("&", " and ").replace("’", "'")
+    return " ".join(re.findall(r"\w+", folded))
+
+
+def lookup(labels):
+    values = " ".join(f"{json.dumps(label, ensure_ascii=False)}@{lang}" for label in labels for lang in ("en", "mul"))
+    query = f"""SELECT DISTINCT ?title ?artist ?video WHERE {{
+        VALUES ?title {{ {values} }}
+        ?song rdfs:label ?title; wdt:P1651 ?video; wdt:P175 ?performer .
+        ?performer rdfs:label ?artist . FILTER (LANG(?artist) IN ("en", "mul"))
+    }}"""
+    url = "https://query.wikidata.org/sparql?" + urlencode({"format": "json", "query": query})
+    return fetch(url)["results"]["bindings"]
 
 
 def main():
-    catalog = json.loads(CATALOG.read_text()) if CATALOG.exists() else {}
+    catalog = json.loads(CATALOG.read_text())
     songs = {}
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        for result in pool.map(chart, GENRES):
-            songs.update(result)
-        tasks = {track_id: pool.submit(video_for, (track_id, song)) for track_id, song in songs.items()}
-        errors = 0
-        matches = 0
-        for track_id, task in tasks.items():
-            try:
-                entry = task.result()
-                if entry:
-                    catalog[track_id] = entry
-                    matches += 1
-            except (ValueError, OSError) as exc:
-                print(f"{track_id}: {exc}", file=sys.stderr)
-                errors += 1
-    if not matches or errors > len(tasks) / 2:
-        sys.exit("Chart sources unavailable. Keeping the previous catalog.")
+    for genre in GENRES:
+        songs.update(chart(genre))
+    missing = {k: song for k, song in songs.items() if k not in catalog}
+    labels = sorted({title_label(title) for title, _ in missing.values()})
+    candidates = defaultdict(set)
+    for start in range(0, len(labels), 18):
+        for row in lookup(labels[start:start + 18]):
+            video = row["video"]["value"]
+            if re.fullmatch(r"[\w-]{11}", video, re.ASCII):
+                key = (words(row["title"]["value"]), words(row["artist"]["value"]))
+                candidates[key].add(video)
+    added = 0
+    for track_id, (title, artist) in missing.items():
+        lead = re.split(r",\s+| & | feat\. ", artist, maxsplit=1, flags=re.I)[0]
+        label = words(title_label(title))
+        matches = candidates[(label, words(artist))] or candidates[(label, words(lead))]
+        if len(matches) == 1:
+            catalog[track_id] = {"title": title, "artist": artist, "youtube": next(iter(matches))}
+            added += 1
     CATALOG.write_text(json.dumps(catalog, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
-    print(f"{matches} YouTube links from {len(songs)} chart tracks; {len(catalog)} saved.")
+    print(f"Checked {len(songs)} chart tracks. Added {added} video links; {len(catalog)} saved.")
 
 
 if __name__ == "__main__":
