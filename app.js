@@ -1075,7 +1075,7 @@ void main() {
   },
 };
 stage.init();
-// TheAudioDB links recordings to YouTube. Keep the existing Apple preview as a fallback.
+// Accept video links from supported YouTube hosts.
 function youtubeId(link) {
   try {
     const url = new URL(link);
@@ -1088,6 +1088,80 @@ function youtubeId(link) {
     }
     return /^[\w-]{11}$/.test(id || '') ? id : null;
   } catch { return null; }
+}
+
+// Normalize catalog punctuation while preserving non-Latin artist and song names.
+function videoWords(value) {
+  return value.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase()
+    .replace(/['’]/g, '').replace(/&/g, ' and ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+function videoTitle(title) {
+  return title.replace(/\s+[(\[](?:feat\.?|ft\.?|with\b|from\b|live\b|remaster|radio edit|official video)[^\])]*[\])]\s*$/i, '').trim();
+}
+function videoArtistMatches(credit, artist) {
+  const name = videoWords(credit);
+  if (!name) return false;
+  // Try complete names first so groups such as Mumford & Sons keep their identity.
+  const parts = artist.split(/\s+(?:&|feat\.?|featuring|with)\s+|,\s+/i);
+  return parts.some((_, i) => videoWords(parts.slice(0, i + 1).join(' & ')) === name) ||
+    videoWords(artist) === name;
+}
+
+async function audioDBVideo(track, signal) {
+  const title = videoTitle(track.title);
+  for (const artist of new Set([track.artist, mainArtist(track)])) {
+    const data = await videoJSON('https://www.theaudiodb.com/api/v1/json/123/searchtrack.php',
+      { s: artist, t: title }, signal);
+    if (!('track' in data)) throw new Error('Track lookup unavailable');
+    const hit = (data.track || []).find(x => videoWords(videoTitle(x.strTrack || '')) === videoWords(title) &&
+      videoArtistMatches(x.strArtist || '', track.artist) && youtubeId(x.strMusicVid));
+    if (hit) return youtubeId(hit.strMusicVid);
+  }
+  return null;
+}
+
+async function videoJSON(endpoint, params, signal) {
+  const response = await fetch(endpoint + '?' + new URLSearchParams(params), { signal });
+  if (!response.ok) throw new Error('Video catalog unavailable');
+  return response.json();
+}
+
+async function wikipediaVideo(track, signal) {
+  const api = (params) => videoJSON('https://en.wikipedia.org/w/api.php', {
+    format: 'json', formatversion: 2, origin: '*', ...params,
+  }, signal);
+  const title = videoTitle(track.title), key = videoWords(title);
+  const search = await api({
+    action: 'query', list: 'search', srlimit: 5, srprop: '',
+    srsearch: 'intitle:"' + title.replace(/"/g, '') + '" ' + track.artist,
+  });
+  if (!search.query?.search) throw new Error('Wikipedia search unavailable');
+  const candidates = search.query.search.filter(page => videoWords(page.title) === key ||
+    videoWords(page.title.replace(/\s+\([^)]*\)$/, '')) === key);
+  for (const page of candidates.slice(0, 2)) {
+    const article = await api({ action: 'parse', pageid: page.pageid, section: 0, prop: 'text' });
+    if (!article.parse) throw new Error('Wikipedia article unavailable');
+    // Read the lead infobox in an inert template. Never insert article HTML into the page.
+    const template = document.createElement('template');
+    template.innerHTML = article.parse.text;
+    for (const box of template.content.querySelectorAll('table.infobox')) {
+      if (videoWords(box.querySelector('.infobox-above')?.textContent || '') !== key) continue;
+      const credit = [...box.querySelectorAll('.infobox-header')].find(h => /\bby\s/i.test(h.textContent));
+      if (!credit) continue;
+      const names = [...credit.querySelectorAll('a')].map(a => a.textContent);
+      names.push(credit.textContent.replace(/^.*?\bby\s+/i, ''));
+      if (!names.some(name => videoArtistMatches(name, track.artist))) continue;
+      for (const section of box.querySelectorAll('.infobox-header')) {
+        if (!/\bvideo\b/i.test(section.textContent)) continue;
+        const row = section.closest('tr')?.nextElementSibling;
+        for (const link of row?.querySelectorAll('a[href]') || []) {
+          const id = youtubeId(link.getAttribute('href'));
+          if (id) return id;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 let youtubeReady, retryYouTubeAfter = 0;
@@ -1113,32 +1187,38 @@ function loadYouTubeAPI() {
 
 const mv = {
   box: $('mv'), ok: false, seq: 0, cache: new Map(), timer: 0,
-  clean: (s) => s.replace(/\s*[(\[].*$/, '').trim().toLowerCase(),
   async find(t, provider) {
     const key = provider + ':' + t.id;
     if (this.cache.has(key)) return this.cache.get(key);
-    const artist = mainArtist(t), title = this.clean(t.title);
-    const youtube = provider === 'youtube';
-    const params = youtube ? { s: artist, t: title } : { entity: 'musicVideo', limit: '10', term: title + ' ' + artist };
-    const base = youtube ? 'https://www.theaudiodb.com/api/v1/json/123/searchtrack.php' : 'https://itunes.apple.com/search';
     const controller = this.search = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), provider === 'wikipedia' ? 6500 : 5000);
+    const title = videoTitle(t.title), titleKey = videoWords(title);
+    let match;
     try {
-      const r = await fetch(base + '?' + new URLSearchParams(params), { signal: controller.signal });
-      if (!r.ok) return null;
-      const data = await r.json();
-      let match;
-      if (youtube) {
-        match = (data.track || []).find(x => this.clean(x.strTrack || '') === title &&
-          mainArtist({ artist: x.strArtist || '' }).toLowerCase() === artist.toLowerCase() && youtubeId(x.strMusicVid));
-        match = match && youtubeId(match.strMusicVid);
+      if (provider === 'chart') {
+        if (!this.chartVideos) {
+          const res = await fetch('chart-videos.json', { signal: controller.signal });
+          if (!res.ok) throw new Error('Chart links unavailable');
+          this.chartVideos = await res.json();
+        }
+        const exact = t.src === 'apple' && this.chartVideos[t.id.slice(1)];
+        const entry = exact || Object.values(this.chartVideos).find(x =>
+          videoWords(x.title) === videoWords(t.title) && videoWords(x.artist) === videoWords(t.artist));
+        match = entry?.youtube;
+      } else if (provider === 'wikipedia') {
+        match = await wikipediaVideo(t, controller.signal);
+      } else if (provider === 'youtube') {
+        match = await audioDBVideo(t, controller.signal);
       } else {
-        match = (data.results || []).find(x => x.previewUrl && this.clean(x.trackName || '') === title &&
-          (x.artistName || '').toLowerCase().includes(artist.toLowerCase()))?.previewUrl;
+        const data = await videoJSON('https://itunes.apple.com/search', {
+          entity: 'musicVideo', limit: 10, term: title + ' ' + mainArtist(t),
+        }, controller.signal);
+        match = data.results?.find(x => x.previewUrl && videoWords(videoTitle(x.trackName || '')) === titleKey &&
+          (videoArtistMatches(x.artistName || '', t.artist) || videoArtistMatches(t.artist, x.artistName || '')))?.previewUrl;
       }
       if (match) this.cache.set(key, match);
       return match;
-    } catch { return null; } finally { clearTimeout(timeout); }
+    } finally { clearTimeout(timeout); }
   },
   visible(on) {
     this.ok = on;
@@ -1171,12 +1251,22 @@ const mv = {
     $('videoLink').value = saved ? 'https://youtu.be/' + saved : '';
     $('videoLink').setCustomValidity('');
     $('videoStatus').textContent = 'Looking for a music video…';
-    if (!window.YT?.Player && Date.now() < retryYouTubeAfter) {
-      return this.fallback(t, seq, 'YouTube player unavailable.');
+    const link = $('videoMatch');
+    link.href = 'https://www.youtube.com/results?' + new URLSearchParams({ search_query: t.artist + ' ' + t.title + ' official music video' });
+    link.textContent = 'Search YouTube for this song';
+    let id = saved, lookupFailed = false;
+    for (const provider of ['chart', 'youtube', 'wikipedia']) {
+      if (id) break;
+      try { id = await this.find(t, provider); }
+      catch { lookupFailed = true; }
+      if (seq !== this.seq) return;
     }
-    const id = saved || await this.find(t, 'youtube');
-    if (seq !== this.seq) return;
-    if (!id) return this.fallback(t, seq);
+    if (!id) return this.fallback(t, seq, lookupFailed ? 'Video lookup incomplete.' : 'No YouTube match.');
+    link.href = 'https://www.youtube.com/watch?v=' + id;
+    link.textContent = 'Open matched video on YouTube';
+    if (!window.YT?.Player && Date.now() < retryYouTubeAfter) {
+      return this.fallback(t, seq, 'Video found. YouTube player unavailable.');
+    }
     try {
       const YT = await loadYouTubeAPI();
       if (seq !== this.seq) return;
@@ -1209,14 +1299,14 @@ const mv = {
           onError: fail, onAutoplayBlocked: fail,
         },
       });
-    } catch { this.fallback(t, seq, 'YouTube player unavailable.'); }
+    } catch { this.fallback(t, seq, 'Video found. YouTube player unavailable.'); }
   },
   async fallback(t, seq, reason = 'No YouTube match.') {
     if (seq !== this.seq) return;
     this.stop();
     const current = this.seq;
     $('videoStatus').textContent = reason + ' Looking for an Apple video clip…';
-    const url = await this.find(t, 'apple');
+    const url = await this.find(t, 'apple').catch(() => null);
     if (current !== this.seq) return;
     const unavailable = () => {
       if (current !== this.seq) return;
