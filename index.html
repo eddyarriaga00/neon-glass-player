@@ -14,11 +14,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=26">
+<link rel="stylesheet" href="style.css?v=27">
 </head>
 <body>
 <canvas id="stage" aria-hidden="true"></canvas>
-<video id="mv" muted playsinline loop preload="auto" aria-hidden="true"></video>
+<div id="mv" aria-hidden="true" inert></div>
 <div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="grid"></div></div>
 
 <header class="top">
@@ -139,6 +139,12 @@
       <button type="button" data-n="3">Tunnel</button>
       <button type="button" data-n="4">Video</button>
     </div>
+    <div id="videoSettings" hidden>
+      <label for="videoLink">YouTube video for this song</label>
+      <input id="videoLink" type="url" placeholder="Automatic · paste a YouTube link" autocomplete="off">
+      <button id="saveVideo" type="button" class="link-btn">Apply</button>
+      <p id="videoStatus" role="status"></p>
+    </div>
     <label class="sw" id="tiltRow" hidden><span>Tilt the cover in 3D when you move your phone</span><input type="checkbox" id="tilt"></label>
     <h3>Lyrics size</h3>
     <div class="seg three" id="lySeg" role="group" aria-label="Lyrics size">
@@ -178,6 +184,6 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="none" playsinline></audio>
-<script src="app.js?v=26"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>

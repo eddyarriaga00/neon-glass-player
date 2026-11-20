@@ -7,3 +7,4 @@ A neon glass music player that runs entirely in the browser (GitHub Pages, no se
 - Optional full-length Spotify playback: paste your own Spotify app Client ID under "Connect Spotify" (Premium required by Spotify)
 - Pick a primary service (Apple Music or Spotify): it leads the list and handles playback when it can
 - "Open in" links for Apple Music and Spotify
+- In Settings, choose **Animated background → Video** to show a muted YouTube video matched by TheAudioDB. You can also paste a YouTube link for the current song. If YouTube is unavailable, the player tries an Apple music video clip, then uses the animated background where supported.
