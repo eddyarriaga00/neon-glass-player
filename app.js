@@ -1166,6 +1166,48 @@ async function wikipediaVideo(track, signal) {
   return null;
 }
 
+// Real video search, for songs the curated catalogs do not know. Uses the user's own YouTube key when one is saved,
+// otherwise free public search mirrors (these come and go, so several are tried).
+const SEARCH_MIRRORS = ['https://api.piped.private.coffee', 'https://pipedapi.ducks.party'];
+function pickVideo(t, items) {
+  const full = videoWords(videoTitle(t.title)), bare = videoWords(t.title.replace(/\s*[(\[].*$/, '')), artist = videoWords(mainArtist(t));
+  const wantsAlt = /\b(live|remix|acoustic|cover|instrumental)\b/.test(videoWords(t.title));
+  let best = null, top = 0;
+  for (const x of items) {
+    if (!x.id) continue;
+    const title = videoWords(x.title), channel = videoWords(x.channel || '');
+    if (!((full && title.includes(full)) || (bare && title.includes(bare)))) continue;
+    if (!(title.includes(artist) || channel.includes(artist))) continue;
+    let s = 10;
+    if (/\bofficial\b/.test(title)) s += 3;
+    if (/\bvideo\b/.test(title)) s += 3;
+    if (channel.includes(artist)) s += 2;
+    if (/\b(lyrics?|audio|visualizer)\b/.test(title)) s -= 2;
+    if (!wantsAlt && /\b(live|cover|reaction|remix|karaoke|sped up|slowed|8d|instrumental|acoustic|parody|tutorial)\b/.test(title)) s -= 8;
+    if (t.dur && x.dur) { const d = Math.abs(x.dur - t.dur); s += d < 20 ? 3 : d < 90 ? 1 : d > 400 ? -6 : 0; }
+    if (s > top) { top = s; best = x; }
+  }
+  return top >= 6 ? best.id : null;
+}
+async function searchVideo(t, signal) {
+  const q = mainArtist(t) + ' ' + videoTitle(t.title) + ' official video';
+  const key = store.get('ytKey');
+  if (key) {
+    try {
+      const d = await videoJSON('https://www.googleapis.com/youtube/v3/search', { part: 'snippet', type: 'video', videoEmbeddable: 'true', maxResults: 8, q, key }, signal);
+      const plain = (s) => s.replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+      return pickVideo(t, (d.items || []).map((x) => ({ id: x.id && x.id.videoId, title: plain(x.snippet.title), channel: plain(x.snippet.channelTitle) })));
+    } catch {}
+  }
+  for (const base of SEARCH_MIRRORS) {
+    try {
+      const d = await videoJSON(base + '/search', { q, filter: 'videos' }, signal);
+      return pickVideo(t, (d.items || []).filter((x) => x.url).map((x) => ({ id: youtubeId('https://www.youtube.com' + x.url), title: x.title || '', channel: x.uploaderName || '', dur: x.duration })));
+    } catch {}
+  }
+  throw new Error('Video search unavailable');
+}
+
 let youtubeReady, retryYouTubeAfter = 0;
 function loadYouTubeAPI() {
   if (window.YT?.Player) return Promise.resolve(window.YT);
@@ -1193,7 +1235,7 @@ const mv = {
     const key = provider + ':' + t.id;
     if (this.cache.has(key)) return this.cache.get(key);
     const controller = this.search = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), provider === 'wikipedia' ? 6500 : 5000);
+    const timeout = setTimeout(() => controller.abort(), provider === 'wikipedia' ? 6500 : provider === 'search' ? 12000 : 5000);
     const title = videoTitle(t.title), titleKey = videoWords(title);
     let match;
     try {
@@ -1211,6 +1253,8 @@ const mv = {
         match = await wikipediaVideo(t, controller.signal);
       } else if (provider === 'youtube') {
         match = await audioDBVideo(t, controller.signal);
+      } else if (provider === 'search') {
+        match = await searchVideo(t, controller.signal);
       } else {
         const data = await videoJSON('https://itunes.apple.com/search', {
           entity: 'musicVideo', limit: 10, term: title + ' ' + mainArtist(t),
@@ -1256,14 +1300,16 @@ const mv = {
     const link = $('videoMatch');
     link.href = 'https://www.youtube.com/results?' + new URLSearchParams({ search_query: t.artist + ' ' + t.title + ' official music video' });
     link.textContent = 'Search YouTube for this song';
-    let id = saved, lookupFailed = false;
-    for (const provider of ['chart', 'youtube', 'wikipedia']) {
+    const remembered = store.get('vauto.' + t.id); // a match found on an earlier play
+    let id = saved || remembered, lookupFailed = false;
+    for (const provider of ['chart', 'youtube', 'wikipedia', 'search']) {
       if (id) break;
       try { id = await this.find(t, provider); }
       catch { lookupFailed = true; }
       if (seq !== this.seq) return;
     }
-    if (!id) return this.fallback(t, seq, lookupFailed ? 'Video lookup incomplete.' : 'No YouTube match.');
+    if (!id) return this.fallback(t, seq, lookupFailed ? 'Video search could not be reached.' : 'No YouTube match.');
+    if (!saved) store.set('vauto.' + t.id, id);
     link.href = 'https://www.youtube.com/watch?v=' + id;
     link.textContent = 'Open matched video on YouTube';
     if (!window.YT?.Player && Date.now() < retryYouTubeAfter) {
@@ -1298,7 +1344,7 @@ const mv = {
             $('videoStatus').textContent = 'Showing the YouTube video.';
             if (!isPlaying()) this.player.pauseVideo();
           },
-          onError: fail, onAutoplayBlocked: fail,
+          onError: () => { store.del('vauto.' + t.id); fail(); }, onAutoplayBlocked: fail,
         },
       });
     } catch { this.fallback(t, seq, 'Video found. YouTube player unavailable.'); }
@@ -1379,6 +1425,13 @@ $('saveVideo').onclick = () => {
 // Show the video status on Now Playing too, so it is visible without opening Settings. Tapping it retries.
 new MutationObserver(() => { $('vstat').textContent = $('videoStatus').textContent; }).observe($('videoStatus'), { childList: true, characterData: true, subtree: true });
 $('vstat').onclick = () => { buzz(); mv.kick(); };
+$('ytKey').value = store.get('ytKey', '');
+$('ytKey').onchange = () => {
+  const k = $('ytKey').value.trim();
+  if (k) store.set('ytKey', k); else store.del('ytKey');
+  toast(k ? 'YouTube key saved. Video search will use it.' : 'YouTube key removed.');
+  retryYouTubeAfter = 0; mv.cache.clear(); if (state.track) mv.load(state.track);
+};
 $('videoLink').oninput = () => $('videoLink').setCustomValidity('');
 audio.addEventListener('seeked', () => { if (state.backend === 'audio') mv.seek(pos()); });
 $('sceneSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) stage.set(+b.dataset.n, false); });

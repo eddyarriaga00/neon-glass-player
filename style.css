@@ -802,3 +802,8 @@ body:not(.is-playing) #mv { filter: brightness(.45) saturate(1) blur(6px); }
   .has-video .meta, .has-video .times { text-shadow: 0 1px 10px rgba(0, 0, 0, .8); }
   .has-video .mini, .has-video .tabbar { background: rgba(14, 9, 26, .86); } /* solid enough that the list scrolling underneath stays out of the way */
 }
+
+/* ---------- v32 ---------- */
+.vkey summary { font-size: 12px; color: var(--dim); cursor: pointer; }
+.vkey p { font-size: 11.5px; margin: 6px 0; }
+#videoSettings .vkey input { width: 100%; margin: 0; }

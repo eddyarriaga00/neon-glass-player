@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=31">
+<link rel="stylesheet" href="style.css?v=32">
 </head>
 <body>
 <canvas id="stage" aria-hidden="true"></canvas>
@@ -146,6 +146,11 @@
       <p id="videoStatus" class="status" role="status"></p>
       <div class="vrow"><input id="videoLink" type="url" placeholder="Automatic, or paste a YouTube link" autocomplete="off"><button id="saveVideo" type="button" class="act main">Apply</button></div>
       <a id="videoMatch" target="_blank" rel="noopener"></a>
+      <details class="vkey">
+        <summary>Make video matching more reliable (optional)</summary>
+        <p>Videos are found through free search services that can go down. For dependable matching, paste your own free YouTube Data API key (Google Cloud Console → enable "YouTube Data API v3" → create an API key). It allows about 100 new songs a day, and each match is remembered.</p>
+        <input id="ytKey" type="text" placeholder="YouTube API key" autocomplete="off" spellcheck="false">
+      </details>
     </div>
     <label class="sw" id="tiltRow" hidden><span>Tilt the cover in 3D when you move your phone</span><input type="checkbox" id="tilt"></label>
     <h3>Lyrics size</h3>
@@ -187,6 +192,6 @@
 <button id="theaterExit" type="button" class="pill" aria-label="Leave watch mode">Show player</button>
 <div id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="none" playsinline></audio>
-<script src="app.js?v=31"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>
