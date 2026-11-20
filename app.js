@@ -1090,7 +1090,7 @@ function youtubeId(link) {
   } catch { return null; }
 }
 
-let youtubeReady;
+let youtubeReady, retryYouTubeAfter = 0;
 function loadYouTubeAPI() {
   if (window.YT?.Player) return Promise.resolve(window.YT);
   if (!youtubeReady) youtubeReady = new Promise((resolve, reject) => {
@@ -1099,6 +1099,7 @@ function loadYouTubeAPI() {
       clearTimeout(timer);
       script.remove();
       youtubeReady = null;
+      retryYouTubeAfter = Date.now() + 60000;
       reject(new Error('YouTube player unavailable'));
     };
     const timer = setTimeout(fail, 8000);
@@ -1148,6 +1149,7 @@ const mv = {
     ++this.seq;
     this.search?.abort();
     clearTimeout(this.timer);
+    this.timer = 0;
     this.ready = false;
     this.player?.destroy();
     this.player = null;
@@ -1169,6 +1171,9 @@ const mv = {
     $('videoLink').value = saved ? 'https://youtu.be/' + saved : '';
     $('videoLink').setCustomValidity('');
     $('videoStatus').textContent = 'Looking for a music video…';
+    if (!window.YT?.Player && Date.now() < retryYouTubeAfter) {
+      return this.fallback(t, seq, 'YouTube player unavailable.');
+    }
     const id = saved || await this.find(t, 'youtube');
     if (seq !== this.seq) return;
     if (!id) return this.fallback(t, seq);
@@ -1177,7 +1182,7 @@ const mv = {
       if (seq !== this.seq) return;
       const host = document.createElement('div');
       this.box.append(host);
-      const fail = () => this.fallback(t, seq);
+      const fail = () => this.fallback(t, seq, 'YouTube could not play this video.');
       this.timer = setTimeout(fail, 10000);
       this.player = new YT.Player(host, {
         host: 'https://www.youtube-nocookie.com', videoId: id,
@@ -1186,6 +1191,7 @@ const mv = {
           onReady: () => {
             if (seq !== this.seq) return;
             clearTimeout(this.timer);
+            this.timer = 0;
             this.ready = true;
             this.player.mute();
             this.seek(pos());
@@ -1195,6 +1201,7 @@ const mv = {
           onStateChange: e => {
             if (seq !== this.seq || e.data !== YT.PlayerState.PLAYING) return;
             clearTimeout(this.timer);
+            this.timer = 0;
             this.visible(true);
             $('videoStatus').textContent = 'Showing the YouTube video.';
             if (!isPlaying()) this.player.pauseVideo();
@@ -1202,19 +1209,19 @@ const mv = {
           onError: fail, onAutoplayBlocked: fail,
         },
       });
-    } catch { this.fallback(t, seq); }
+    } catch { this.fallback(t, seq, 'YouTube player unavailable.'); }
   },
-  async fallback(t, seq) {
+  async fallback(t, seq, reason = 'No YouTube match.') {
     if (seq !== this.seq) return;
     this.stop();
     const current = this.seq;
-    $('videoStatus').textContent = 'Looking for an Apple video clip…';
+    $('videoStatus').textContent = reason + ' Looking for an Apple video clip…';
     const url = await this.find(t, 'apple');
     if (current !== this.seq) return;
     const unavailable = () => {
       if (current !== this.seq) return;
       this.stop();
-      $('videoStatus').textContent = 'No playable video found. Try another YouTube link.';
+      $('videoStatus').textContent = reason + ' No playable Apple clip found.';
     };
     if (!url) return unavailable();
     const clip = this.clip = document.createElement('video');
@@ -1225,7 +1232,7 @@ const mv = {
     clip.onplaying = () => {
       if (current !== this.seq) return;
       this.visible(true);
-      $('videoStatus').textContent = 'Showing an Apple video clip.';
+      $('videoStatus').textContent = reason + ' Showing an Apple video clip.';
     };
     this.box.append(clip);
     clip.src = url;
@@ -1236,14 +1243,17 @@ const mv = {
   },
   sync() {
     if (this.ready) {
-      clearTimeout(this.timer);
       if (isPlaying()) {
         this.player.playVideo();
-        if (!this.ok) {
+        if (!this.ok && !this.timer) {
           const seq = this.seq;
-          this.timer = setTimeout(() => this.fallback(state.track, seq), 10000);
+          this.timer = setTimeout(() => this.fallback(state.track, seq, 'YouTube playback timed out.'), 10000);
         }
-      } else this.player.pauseVideo();
+      } else {
+        clearTimeout(this.timer);
+        this.timer = 0;
+        this.player.pauseVideo();
+      }
     }
     if (this.clip) {
       if (isPlaying()) this.clip.play().catch(() => {});
@@ -1262,6 +1272,7 @@ $('saveVideo').onclick = () => {
   }
   if (id) store.set('video.' + t.id, id);
   else store.del('video.' + t.id);
+  retryYouTubeAfter = 0;
   mv.load(t);
 };
 $('videoLink').oninput = () => $('videoLink').setCustomValidity('');
