@@ -783,3 +783,22 @@ body:not(.is-playing) #mv { filter: brightness(.32) saturate(1) blur(10px); } /*
   .has-stage .grab { font-size: 0; }
   .theater .player { padding-bottom: calc(28px + env(safe-area-inset-bottom)); }
 }
+
+/* ---------- v30: the video is actually visible on phones ---------- */
+#mv { filter: brightness(.82) saturate(1.15); }
+body:not(.is-playing) #mv { filter: brightness(.45) saturate(1) blur(6px); }
+.vstat { display: none; }
+.scene-video .vstat:not(:empty) { display: block; width: 100%; margin-top: 6px; padding: 5px 10px; border-radius: 99px; font-size: 10.5px; text-align: center; color: var(--dim); background: rgba(8, 4, 16, .45); border: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.theater .vstat { display: none !important; }
+@media (max-width: 700px), (max-width: 880px) and (orientation: portrait) {
+  /* Home: thin glass so the video shows through the list */
+  .has-video .library { background: rgba(10, 6, 20, .3); backdrop-filter: blur(5px) saturate(130%); -webkit-backdrop-filter: blur(5px) saturate(130%); }
+  .has-video .track, .has-video .b-tile, .has-video .pl { background: rgba(10, 6, 20, .5); }
+  .has-video .search { background: rgba(10, 6, 20, .55); }
+  .has-video .list-title, .has-video .track b { text-shadow: 0 1px 8px rgba(0, 0, 0, .7); }
+  /* Now Playing: clear at the top, only as dark as the text needs lower down */
+  .has-video .player { background: linear-gradient(rgba(6, 3, 12, .05), rgba(6, 3, 12, 0) 30%, rgba(6, 3, 12, .38) 56%, rgba(6, 3, 12, .72)); }
+  .has-video .pcard { background: rgba(10, 6, 20, .42); backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); }
+  .has-video .meta, .has-video .times { text-shadow: 0 1px 10px rgba(0, 0, 0, .8); }
+  .has-video .mini, .has-video .tabbar { background: rgba(14, 9, 26, .55); }
+}

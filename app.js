@@ -1043,6 +1043,7 @@ void main() {
     const on = this.scene > 0 && (!!this.gl || mv.ok);
     document.body.classList.toggle('has-stage', on);
     document.body.classList.toggle('has-video', this.scene === 4 && mv.ok);
+    document.body.classList.toggle('scene-video', this.scene === 4);
     document.querySelectorAll('#sceneSeg button').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.n === this.scene)));
   },
   set(n, announce) {
@@ -1327,7 +1328,16 @@ const mv = {
     };
     this.box.append(clip);
     clip.src = url;
-    this.sync();
+    if (isPlaying()) clip.play().catch(() => { // phones in Low Power Mode refuse to start video on their own
+      if (current === this.seq) $('videoStatus').textContent = 'Your phone is holding the video back. Tap here to start it.';
+    });
+  },
+  // Called from a tap, which phones accept as permission to start video.
+  kick() {
+    if (this.clip) { this.clip.play().catch(() => {}); return; }
+    if (this.ready) { try { this.player.mute(); this.player.playVideo(); } catch {} return; }
+    retryYouTubeAfter = 0;
+    if (state.track) this.load(state.track);
   },
   seek(seconds) {
     if (this.ready) this.player.seekTo(Math.max(0, seconds + (state.offset || 0)), true);
@@ -1366,6 +1376,9 @@ $('saveVideo').onclick = () => {
   retryYouTubeAfter = 0;
   mv.load(t);
 };
+// Show the video status on Now Playing too, so it is visible without opening Settings. Tapping it retries.
+new MutationObserver(() => { $('vstat').textContent = $('videoStatus').textContent; }).observe($('videoStatus'), { childList: true, characterData: true, subtree: true });
+$('vstat').onclick = () => { buzz(); mv.kick(); };
 $('videoLink').oninput = () => $('videoLink').setCustomValidity('');
 audio.addEventListener('seeked', () => { if (state.backend === 'audio') mv.seek(pos()); });
 $('sceneSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) stage.set(+b.dataset.n, false); });
