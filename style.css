@@ -800,5 +800,5 @@ body:not(.is-playing) #mv { filter: brightness(.45) saturate(1) blur(6px); }
   .has-video .player { background: linear-gradient(rgba(6, 3, 12, .05), rgba(6, 3, 12, 0) 30%, rgba(6, 3, 12, .38) 56%, rgba(6, 3, 12, .72)); }
   .has-video .pcard { background: rgba(10, 6, 20, .42); backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); }
   .has-video .meta, .has-video .times { text-shadow: 0 1px 10px rgba(0, 0, 0, .8); }
-  .has-video .mini, .has-video .tabbar { background: rgba(14, 9, 26, .55); }
+  .has-video .mini, .has-video .tabbar { background: rgba(14, 9, 26, .86); } /* solid enough that the list scrolling underneath stays out of the way */
 }
