@@ -84,6 +84,11 @@
     "title": "Danza Kuduro (feat. Lucenzo)",
     "youtube": "jULlUasuxQk"
   },
+  "1440653206": {
+    "artist": "Portishead",
+    "title": "Glory Box",
+    "youtube": "4qQyUi4zfDs"
+  },
   "1440664900": {
     "artist": "3 Doors Down",
     "title": "Kryptonite",
@@ -164,6 +169,16 @@
     "title": "Mr. Brightside",
     "youtube": "gGdGFtwCNBE"
   },
+  "1440894523": {
+    "artist": "U2",
+    "title": "Sunday Bloody Sunday",
+    "youtube": "EM4vblG6BVQ"
+  },
+  "1440894548": {
+    "artist": "U2",
+    "title": "New Year's Day",
+    "youtube": "orHkDYNFwEg"
+  },
   "1440902348": {
     "artist": "4 Non Blondes",
     "title": "What's Up?",
@@ -188,6 +203,36 @@
     "artist": "Mary J. Blige",
     "title": "Family Affair",
     "youtube": "znlFu_lemsU"
+  },
+  "1443063492": {
+    "artist": "U2",
+    "title": "One",
+    "youtube": "ftjEcrrf7r0"
+  },
+  "1443063767": {
+    "artist": "U2",
+    "title": "Mysterious Ways",
+    "youtube": "TxcDTUMLQJI"
+  },
+  "1443100723": {
+    "artist": "U2",
+    "title": "Beautiful Day",
+    "youtube": "co6WMzDOh1o"
+  },
+  "1443155640": {
+    "artist": "U2",
+    "title": "Where the Streets Have No Name",
+    "youtube": "GzZWSrr5wFI"
+  },
+  "1443155644": {
+    "artist": "U2",
+    "title": "I Still Haven't Found What I'm Looking For",
+    "youtube": "epWSITIDQW0"
+  },
+  "1443184298": {
+    "artist": "U2",
+    "title": "Pride (In the Name of Love)",
+    "youtube": "LHcP4MWABGY"
   },
   "1443855823": {
     "artist": "Crystal Waters",
@@ -383,6 +428,11 @@
     "artist": "Fuel",
     "title": "Hemorrhage (In My Hands)",
     "youtube": "ZbHfgXJKn1Y"
+  },
+  "208035543": {
+    "artist": "Exile",
+    "title": "Kiss You All Over",
+    "youtube": "TmQEVt3HcXg"
   },
   "209388682": {
     "artist": "My Chemical Romance",
@@ -729,6 +779,36 @@
     "title": "Just A Woman",
     "youtube": "gcktQGI5PzI"
   },
+  "693584839": {
+    "artist": "Duran Duran",
+    "title": "Rio",
+    "youtube": "e3W6yf6c-FA"
+  },
+  "693610779": {
+    "artist": "Duran Duran",
+    "title": "Hungry Like the Wolf",
+    "youtube": "oOg5VxrRTi0"
+  },
+  "693610832": {
+    "artist": "Duran Duran",
+    "title": "Save a Prayer",
+    "youtube": "6Uxc9eFcZyM"
+  },
+  "696247422": {
+    "artist": "Duran Duran",
+    "title": "Ordinary World",
+    "youtube": "FqIACCH20JU"
+  },
+  "696247427": {
+    "artist": "Duran Duran",
+    "title": "Come Undone",
+    "youtube": "Epj84QVw2rc"
+  },
+  "696450584": {
+    "artist": "Duran Duran",
+    "title": "The Reflex",
+    "youtube": "oDnNF5cHCdo"
+  },
   "697409668": {
     "artist": "Tina Turner",
     "title": "The Best",
@@ -783,5 +863,10 @@
     "artist": "Wiz Khalifa",
     "title": "See You Again (feat. Charlie Puth)",
     "youtube": "RgKAFK5djSk"
+  },
+  "997088846": {
+    "artist": "Otis Redding",
+    "title": "(Sittin' On) The Dock of the Bay",
+    "youtube": "rTVjnBo96Ug"
   }
 }
